@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import groq
+from dotenv import load_dotenv
+
+# Load WSL/Local environment variables
+load_dotenv()
 
 app = FastAPI(title="Octa Desktop Engine Control Plane")
 
@@ -17,6 +21,9 @@ app.add_middleware(
 # Initialize Groq client
 # Fallback to empty string for initial scaffold if missing
 groq_client = groq.Groq(api_key=os.environ.get("GROQ_API_KEY", "placeholder"))
+
+# Database connection placeholder for existing Docker TimescaleDB
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://user:pass@localhost:5432/octadesk")
 
 class GenerateCodeRequest(BaseModel):
     intent: str
@@ -88,4 +95,6 @@ def generate_logic(request: GenerateCodeRequest, authorization: str = Header(Non
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Use 8081 to avoid WSL conflicts with other local apps
+    port = int(os.environ.get("PORT", 8081))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
