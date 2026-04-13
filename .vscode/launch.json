@@ -2,27 +2,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run Backend (FastAPI)",
-            "type": "debugpy",
+            "name": "Launch Chrome against localhost",
+            "type": "pwa-chrome",
             "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "main:app",
-                "--reload",
-                "--port",
-                "8081"
-            ],
-            "cwd": "${workspaceFolder}/backend",
-            "envFile": "${workspaceFolder}/backend/.env",
-            "justMyCode": true,
-            "python": "${workspaceFolder}/backend/venv/bin/python"
+            "url": "http://localhost:5174",
+            "webRoot": "${workspaceFolder}/frontend",
+            "preLaunchTask": "Start Frontend (Vite)"
         }
     ],
     "compounds": [
         {
-            "name": "Octa Desktop (Full Stack)",
-            "configurations": ["Run Backend (FastAPI)"],
-            "preLaunchTask": "Start Frontend (Vite)",
+            "name": "Octa Desktop (Frontend)",
+            "configurations": ["Launch Chrome against localhost"],
             "stopAll": true
         }
     ]

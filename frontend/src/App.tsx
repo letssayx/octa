@@ -139,7 +139,7 @@ function App() {
 
                   <p style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>
                     Octa Desktop is running in 100% Local, Air-Gapped Mode.
-                    Complex logic is routed to your local Ollama instance.
+                    All logic and data processing happens entirely in your browser using WebLLM and DuckDB-WASM.
                   </p>
 
                   <label style={{marginTop: '1rem'}}>Local AI Engine (For offline drafting)</label>

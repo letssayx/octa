@@ -44,38 +44,31 @@ export class TaskOrchestrator {
     }
 
     private static async executeAccountingTask(prompt: string, _folder: string, context: string) {
-        console.log("-> Routing to FastAPI Backend (Local Ollama Gateway)...");
+        console.log("-> Routing to Local WebLLM Engine to generate SQL...");
         try {
-            const res = await fetch("http://localhost:8081/api/v1/generate", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    intent: prompt,
-                    metadata_schema: "Table: ContextFiles (id INT, filename VARCHAR)",
-                    context: context
-                })
-            });
-            const data = await res.json();
+            await initWebLLM((progress) => console.log(`[WebLLM Progress] ${progress.text}`));
+
+            const systemPrompt = `You are an expert Data Engineer. Output perfectly valid SQL based ONLY on the provided schema. Schema: Table ContextFiles (id INT, filename VARCHAR). Intent: ${prompt}. ${context}`;
+
+            const response = await chatWithWebLLM(systemPrompt, "");
+
             // Real Stitching: Execute the generated SQL locally in DuckDB!
             await initDuckDB();
 
-            // Note: In a full app, you would parse data.generated_code to ensure it's valid SQL,
-            // and you would load the user's files into DuckDB before executing.
             // For now, we prove the stitch by running a safe test query locally.
+            // In a real app, you would parse the SQL from `response` and execute it.
             const sampleSQL = "SELECT 42 as answer, 'Real DuckDB Executed!' as status";
             const localResult = await executeLocalSQL(sampleSQL);
 
             return {
                 status: "success",
                 action: "duckdb_sql",
-                message: `[Backend Generated SQL]\n${data.generated_code}\n\nData rendered securely in FortuneSheet.`,
+                message: `[Locally Generated SQL Draft]\n${response}\n\nData rendered securely in FortuneSheet.`,
                 data: localResult
             };
-        } catch (e) {
-            console.error("Backend failed:", e);
-            return { status: "error", action: "none", message: "Failed to connect to backend control plane. Is it running on 8081?" };
+        } catch (e: any) {
+            console.error("WebLLM/DuckDB failed:", e);
+            return { status: "error", action: "none", message: `Local Execution Error: ${e.message}` };
         }
     }
 
