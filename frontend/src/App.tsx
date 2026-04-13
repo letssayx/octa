@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { TaskOrchestrator } from './orchestrator/Orchestrator'
-import { savePreference, getPersistentDirectory } from './lib/memory'
 import './App.css'
 
 type Message = {
@@ -8,29 +7,72 @@ type Message = {
   content: string;
 }
 
+// Mocking OPFS Folder Structure
+type FileNode = { name: string; type: 'file' | 'context' };
+type FolderNode = {
+    id: string;
+    name: string;
+    files: FileNode[];
+    chatHistory: Message[]; // Each folder isolates its own history
+}
+
+const INITIAL_FOLDERS: FolderNode[] = [
+    {
+        id: 'f1',
+        name: 'Q3 Accounting',
+        files: [{name: 'sales_q3.csv', type: 'file'}, {name: 'inventory.xlsx', type: 'file'}],
+        chatHistory: [{role: 'system', content: 'Context isolated to: Q3 Accounting. Implicit margin set to 18% via hidden .octa_context.'}]
+    },
+    {
+        id: 'f2',
+        name: 'Myntra Image Assets',
+        files: [{name: 'summer_collection.zip', type: 'file'}],
+        chatHistory: [{role: 'system', content: 'Context isolated to: Myntra Image Assets. Auto-formatting to 1024x1024.'}]
+    },
+    {
+        id: 'f3',
+        name: 'HR & Payroll',
+        files: [{name: 'staff_august.csv', type: 'file'}],
+        chatHistory: [{role: 'system', content: 'Context isolated to: HR & Payroll.'}]
+    }
+]
+
 function App() {
+  const [folders, setFolders] = useState<FolderNode[]>(INITIAL_FOLDERS)
+  const [activeFolderId, setActiveFolderId] = useState<string>('f1')
   const [prompt, setPrompt] = useState('')
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'system', content: 'Welcome to Octa Desktop. I can help with research PDFs, accounting data, image modification, and HR tasks.' }
-  ])
   const [workspaceState, setWorkspaceState] = useState<string>('Empty Workspace')
   const chatHistoryRef = useRef<HTMLDivElement>(null)
+
+  const activeFolder = folders.find(f => f.id === activeFolderId) || folders[0]
 
   useEffect(() => {
     if (chatHistoryRef.current) {
       chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight
     }
-  }, [messages])
+  }, [activeFolder.chatHistory])
 
   const handleRunTask = async () => {
     if (!prompt.trim()) return;
 
     const userPrompt = prompt;
     setPrompt('');
-    setMessages(prev => [...prev, { role: 'user', content: userPrompt }])
+
+    // 1. Update the local context's chat history
+    const updateHistory = (newMsg: Message) => {
+        setFolders(prev => prev.map(f => {
+            if (f.id === activeFolderId) {
+                return { ...f, chatHistory: [...f.chatHistory, newMsg] }
+            }
+            return f;
+        }))
+    }
+
+    updateHistory({ role: 'user', content: userPrompt });
 
     // Simulate thinking delay
     setTimeout(async () => {
+        // In a real app, Orchestrator would receive `activeFolder.id` to read the correct `.octa_context` file via OPFS
         const result = await TaskOrchestrator.handleTask(userPrompt)
 
         let systemResponse = "Task completed.";
@@ -38,12 +80,12 @@ function App() {
             systemResponse = result;
         } else {
             systemResponse = result.message;
-            if (result.action === 'duckdb_sql') setWorkspaceState('Data Grid / FortuneSheet View');
-            if (result.action === 'generate_pdf') setWorkspaceState('PDF Preview View');
-            if (result.action === 'modify_image') setWorkspaceState('Image Editor View');
+            if (result.action === 'duckdb_sql') setWorkspaceState(`Data Grid / FortuneSheet View [Context: ${activeFolder.name}]`);
+            if (result.action === 'generate_pdf') setWorkspaceState(`PDF Preview View [Context: ${activeFolder.name}]`);
+            if (result.action === 'modify_image') setWorkspaceState(`Image Editor View [Context: ${activeFolder.name}]`);
         }
 
-        setMessages(prev => [...prev, { role: 'system', content: systemResponse }])
+        updateHistory({ role: 'system', content: systemResponse });
     }, 500);
   }
 
@@ -54,42 +96,46 @@ function App() {
     }
   }
 
-  const handleSetMemory = async () => {
-    await savePreference('margin', '25%')
-    setMessages(prev => [...prev, { role: 'system', content: '[MEM_SAVE] Margin preference locked to 25%.' }])
-  }
-
-  const checkOPFS = async () => {
-     const dir = await getPersistentDirectory();
-     if (dir) {
-        setMessages(prev => [...prev, { role: 'system', content: '[OPFS] Sandboxed filesystem active. No data loss guaranteed.' }])
-     }
-  }
-
   return (
     <div className="octa-desktop">
-      {/* LEFT SIDEBAR */}
+      {/* LEFT SIDEBAR - FILE EXPLORER */}
       <div className="sidebar">
         <div className="sidebar-header">
           <h2>Octa Desktop</h2>
         </div>
 
         <div className="sidebar-nav">
-          <div className="nav-section-title">Recent Work</div>
-          <button className="nav-item">Q3 Sales Analysis.xlsx</button>
-          <button className="nav-item">Shopify Product Images</button>
-          <button className="nav-item">Stock Research.pdf</button>
-
-          <div className="nav-section-title" style={{marginTop: '2rem'}}>System Health</div>
-          <button className="nav-item" onClick={checkOPFS}>Verify OPFS Storage</button>
-          <button className="nav-item" onClick={handleSetMemory}>Set Global Margin (25%)</button>
+          {folders.map(folder => (
+              <div key={folder.id} className="folder-wrapper">
+                  <div
+                    className={`folder-header ${activeFolderId === folder.id ? 'active' : ''}`}
+                    onClick={() => setActiveFolderId(folder.id)}
+                  >
+                      <span className="folder-icon">📁</span>
+                      {folder.name}
+                  </div>
+                  {activeFolderId === folder.id && (
+                      <div className="folder-contents">
+                          {folder.files.map((file, idx) => (
+                              <div key={idx} className="file-item">
+                                  <span className="file-icon">📄</span>
+                                  {file.name}
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          ))}
         </div>
       </div>
 
       {/* CENTER CHAT */}
       <div className="chat-container">
+        <div className="chat-header">
+            Context Bounded to: {activeFolder.name}
+        </div>
         <div className="chat-history" ref={chatHistoryRef}>
-          {messages.map((m, i) => (
+          {activeFolder.chatHistory.map((m, i) => (
             <div key={i} className={`chat-message ${m.role}`}>
               <div className="message-bubble">
                 {m.content}
@@ -105,12 +151,12 @@ function App() {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message Octa..."
+              placeholder={`Message Octa inside "${activeFolder.name}"...`}
             />
             <button className="send-btn" onClick={handleRunTask}>↑</button>
           </div>
           <div style={{textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px'}}>
-            Octa Desktop processes data locally for privacy.
+            Implicit Grounded Memory active for this folder.
           </div>
         </div>
       </div>

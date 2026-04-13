@@ -15,13 +15,12 @@ The Mermaid diagram below visualizes the strict boundaries between the user's lo
 ```mermaid
 graph TD
     subgraph "User Browser (Client Side - Data Sovereign Sandbox)"
-        UI[Frontend UI: FortuneSheet / Specialized Dashboards]
+        UI[Frontend UI: 3-Pane Desktop Workspace]
         Orchestrator[Local Task Orchestrator]
         W_AI[WebLLM: Specialized SLMs 'Mixture of Experts']
         W_DB[DuckDB-WASM: Local Data Engine]
         Py[Pyodide: Local Python Execution]
-        LocalData[(User Data: CSV/Excel/Images)]
-        OPFS[(OPFS & IndexedDB: Persistent Local Workspace)]
+        OPFS[(OPFS: Context-Bounded Folders & Files)]
         LocalComm[Local Communications: mailto: / wa.me]
 
         %% Internal Client Connections
@@ -31,8 +30,6 @@ graph TD
         Orchestrator --> Py
 
         W_AI -- Task Executed (Drafts/Images) --> UI
-        W_DB <--> LocalData
-        Py <--> LocalData
         W_DB <--> OPFS
         Py <--> OPFS
         Orchestrator <--> OPFS
@@ -68,7 +65,11 @@ graph TD
 ### The Client Side (Sovereign Zone)
 Everything in this zone runs in the client's memory or browser storage. Raw data (like sales figures, RFQs, HR records, or images) is loaded directly into `DuckDB-WASM` or `Pyodide`. The browser utilizes specialized UI components (like embedded `FortuneSheet` for accounting) to view this data.
 
-**Local Persistence:** To guarantee no data loss without relying on the cloud, the application leverages the **Origin Private File System (OPFS)** and `IndexedDB`. All work done—whether it's a generated PDF research report, a collated Excel file, or a modified Myntra-format image—is aggressively saved to the local machine's persistent sandboxed storage.
+**Local Persistence & Context-Bounding (The OpenClaw Approach):**
+To prevent AI from being overwhelmed by infinite chat history and to provide a true "Desktop" feel, data is organized into **Folders** within the **Origin Private File System (OPFS)**.
+- **Context Isolation:** When a user selects a folder (e.g., "Q3 Accounting"), the Orchestrator bounds the AI's context strictly to the files and chat history *within that folder*.
+- **Implicit Grounded Memory:** Instead of manual settings, the AI observes user corrections and automatically writes hidden `.octa_context` files into the specific folder. Future prompts within that folder automatically inject this implicit memory.
+- **Data Loss Prevention:** All work (collated Excels, generated PDFs) is aggressively saved back into these OPFS folders.
 
 **Task Orchestration:** The frontend acts as a "Traffic Cop". When a user requests an action, the Orchestrator routes the task to a specialized SLM or engine:
 - *Data Crunching/Accounting/Inventory:* Routed to DuckDB-WASM and Groq for SQL generation.

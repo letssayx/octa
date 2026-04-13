@@ -12,7 +12,7 @@ This specification details the components comprising the Privacy-First "Octa Des
 | **Data Grid & UI** | FortuneSheet / Specialized UI | Provides a familiar embedded Excel/Spreadsheet experience for accounting/inventory, plus specific views for Research PDFs, Image formatting (Amazon/Myntra), and RFQ generation. |
 | **Public Data Connector** | FastAPI & TimescaleDB | Secure, read-only API gateway streaming public data (e.g., market ticks, generic vendor lists) for the client engine to analyze alongside private local data. |
 | **Automation Hub (Local)** | Browser Hooks / URL Schemes | Utilizes `wa.me` for WhatsApp and `mailto:` for emails. Executes communications entirely via the user's local clients, avoiding centralized automation servers or external APIs. |
-| **Persistent Workspace** | OPFS (Origin Private File System) / IndexedDB | Guarantee against data loss. Employs `MEM_SAVE` and `MEM_LOAD`. Persistently saves user preferences, raw collated data, generated PDF reports, and modified images safely to the user's hard drive sandbox. |
+| **Context-Bounded Workspace** | OPFS (Origin Private File System) | The core of the "Desktop" feel. Provides hierarchical Folders that isolate Chat History and AI Context, preventing context-overwhelm. Safely and persistently saves generated PDFs, images, and raw data to the user's hard drive sandbox. |
 
 ## Execution Framework
 
@@ -25,10 +25,11 @@ By adopting this model, the SaaS platform provides the high-performance "Claw" (
 4.  **Local Execution:** The generated logic is executed against the local, sensitive data entirely within the browser.
 5.  **Results & Persistence:** The final outputs (a combined Excel file, a new Image, an Accounting grid) are displayed in the UI and automatically saved back to the OPFS. Local hooks (`mailto:`, `wa.me`) are triggered if communication is requested.
 
-### Grounded Memory Implementation
-The application will utilize a memory management system to learn from the user while respecting privacy:
-- **`MEM_SAVE`:** When a user dictates a preference, the frontend captures this state and writes it locally to browser storage (IndexedDB) as a settings file (e.g., `user.md` style JSON payload).
-- **`MEM_LOAD`:** Before any prompt is sent to the backend, the frontend intercepts it, reads `user.md`, and silently injects it into the system instructions (e.g., `[System Context: Assume 18% tax rate]`).
+### Implicit Grounded Memory & Context Bounding
+To provide a magical, zero-configuration "Desktop" experience:
+- **Context Bounding:** Users create "Folders" (e.g., "Amazon Product Assets"). Each folder maintains its own isolated chat history. The AI *never* reads history outside the active folder, eliminating the "infinite scroll context wipe" common in typical chatbots.
+- **`MEM_SAVE` (Implicit):** The Orchestrator observes the user's actions. If a user corrects a formatting script to use "1024x1024", the Orchestrator silently writes this rule into a hidden `.octa_context` file *inside that specific folder*. No manual "Save Settings" buttons are exposed.
+- **`MEM_LOAD`:** Before any prompt is sent to an SLM or the Backend, the frontend reads the `.octa_context` of the *active folder* and prepends it to the system instructions.
 
 ### Opt-In Telemetry & RLHF
 To continuously improve code generation without compromising user data:
