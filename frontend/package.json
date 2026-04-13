@@ -10,6 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@fortune-sheet/react": "^1.0.4",
+    "@mlc-ai/web-llm": "^0.2.82",
+    "apache-arrow": "^21.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

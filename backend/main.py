@@ -2,13 +2,38 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-import groq
+import httpx
+import asyncpg
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # Load WSL/Local environment variables
 load_dotenv()
 
-app = FastAPI(title="Octa Desktop Engine Control Plane")
+# Database connection placeholder for existing Docker TimescaleDB
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://user:pass@localhost:5432/octadesk")
+
+# Global Connection Pool
+db_pool = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db_pool
+    print(f"🔄 Connecting to TimescaleDB at {DB_URL.split('@')[-1]}...")
+    try:
+        db_pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=10)
+        print("✅ Successfully connected to TimescaleDB pool.")
+    except Exception as e:
+        print(f"⚠️ Failed to connect to TimescaleDB. Ensure Docker is running. Error: {e}")
+
+    yield
+
+    if db_pool:
+        await db_pool.close()
+        print("🛑 TimescaleDB connection pool closed.")
+
+
+app = FastAPI(title="Octa Desktop Engine Control Plane", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,12 +43,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Groq client
-# Fallback to empty string for initial scaffold if missing
-groq_client = groq.Groq(api_key=os.environ.get("GROQ_API_KEY", "placeholder"))
+# Ollama configuration
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder")
 
-# Database connection placeholder for existing Docker TimescaleDB
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://user:pass@localhost:5432/octadesk")
 
 class GenerateCodeRequest(BaseModel):
     intent: str
@@ -35,18 +58,21 @@ class GenerateCodeResponse(BaseModel):
     explanation: str
 
 @app.get("/")
-def read_root():
-    return {"status": "Control Plane Active. Privacy-First boundaries enforced."}
+async def read_root():
+    db_status = "Connected" if db_pool else "Disconnected"
+    return {
+        "status": "Control Plane Active. Privacy-First boundaries enforced.",
+        "timescale_db": db_status
+    }
+
+from fastapi import Request
 
 @app.post("/api/v1/generate", response_model=GenerateCodeResponse)
-def generate_logic(request: GenerateCodeRequest, authorization: str = Header(None)):
+async def generate_logic(request: GenerateCodeRequest, http_request: Request, authorization: str = Header(None)):
     """
     Core Route for the Orchestrator.
     Receives ONLY metadata schemas and intents. Never raw user row data.
     """
-    if not authorization:
-        # Placeholder for real OAuth logic
-        pass
 
     system_prompt = f"""
     You are an expert Data Engineer and Python/SQL programmer.
@@ -60,23 +86,29 @@ def generate_logic(request: GenerateCodeRequest, authorization: str = Header(Non
     user_prompt = f"Intent: {request.intent}"
 
     try:
-        if groq_client.api_key == "placeholder":
-            # Mock response for testing without API key
-            return GenerateCodeResponse(
-                generated_code="SELECT * FROM table;",
-                explanation="[MOCK] To generate real code, set GROQ_API_KEY."
+        # 100% Local Inference via Ollama
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "stream": False,
+                        "options": {"temperature": 0.1}
+                    },
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                response_text = response.json()["message"]["content"]
+        except httpx.ConnectError:
+             return GenerateCodeResponse(
+                generated_code="-- [MOCK SQL] SELECT * FROM sales;",
+                explanation="[ERROR] Could not connect to Local Ollama instance. Is it running on port 11434? Returning Mock data."
             )
-
-        chat_completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            model="llama3-8b-8192",
-            temperature=0.1,
-        )
-
-        response_text = chat_completion.choices[0].message.content
 
         # Simple extraction logic (assuming markdown formatting)
         code_block = response_text

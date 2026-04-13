@@ -20,8 +20,9 @@ graph TD
         W_AI[WebLLM: Specialized SLMs 'Mixture of Experts']
         W_DB[DuckDB-WASM: Local Data Engine]
         Py[Pyodide: Local Python Execution]
+        Fortune[FortuneSheet: Excel Clone UI]
+        AdHoc[Notepad & Reminders: IndexedDB]
         OPFS[(OPFS: Context-Bounded Folders & Files)]
-        LocalComm[Local Communications: mailto: / wa.me]
 
         %% Internal Client Connections
         UI <--> Orchestrator
@@ -30,6 +31,8 @@ graph TD
         Orchestrator --> Py
 
         W_AI -- Task Executed (Drafts/Images) --> UI
+        W_DB -- Renders Data --> Fortune
+        AdHoc <--> OPFS
         W_DB <--> OPFS
         Py <--> OPFS
         Orchestrator <--> OPFS
@@ -37,13 +40,15 @@ graph TD
 
     subgraph "Hosted SaaS (Your Cloud - Control Plane)"
         API[FastAPI Gateway]
-        Groq[Groq API: Llama-3 / Future Self-Hosted Ollama]
+        Ollama[Self-Hosted Ollama: Qwen2.5-Coder / Llama-3]
+        Scraper[Backend Browser Automation: Playwright]
         S_DB[(TimescaleDB: Public Market Data)]
         Auth[User Auth: Gmail / OAuth]
         Telemetry[(Opt-in Telemetry DB)]
+        CommAgent[Local Auto-Responder: IMAP/SMTP & WA Playwright]
 
         %% Internal Cloud Connections
-        API <--> Groq
+        API <--> Ollama
         API <--> S_DB
         API <--> Auth
         API -. Opt-in User Feedback .-> Telemetry
@@ -53,11 +58,15 @@ graph TD
     API -- Streams Public Ticks / Templates --> UI
     UI -- Sends Schema/Metadata ONLY --> API
     API -- Returns Generated SQL/Python Code --> UI
+    Scraper -- Scrapes Cross-Origin Tasks --> UI
 
     %% Local Execution Post-Generation
     UI -- Applies Generated SQL --> W_DB
     UI -- Applies Generated Python --> Py
-    UI -- Triggers App Hooks --> LocalComm
+
+    %% Local Auto-Responder Agent
+    CommAgent -- Polls Emails (IMAP) & WA (Web) --> UI
+    UI -- Approves Auto-Reply --> CommAgent
 ```
 
 ## 3. Boundary Explanations
@@ -72,16 +81,18 @@ To prevent AI from being overwhelmed by infinite chat history and to provide a t
 - **Data Loss Prevention:** All work (collated Excels, generated PDFs) is aggressively saved back into these OPFS folders.
 
 **Task Orchestration:** The frontend acts as a "Traffic Cop". When a user requests an action, the Orchestrator routes the task to a specialized SLM or engine:
-- *Data Crunching/Accounting/Inventory:* Routed to DuckDB-WASM and Groq for SQL generation.
+- *Data Crunching/Accounting/Inventory:* Routed to DuckDB-WASM and a **Local Ollama** instance for SQL generation. Results are piped directly into **FortuneSheet**, a browser-native Excel clone.
 - *Research & Reports:* Routed to a drafting SLM and local PDF generator.
 - *Image Modification:* Routed to local Canvas/WebGL processing.
-- *Communications/HR:* Routed to template engines and local hooks.
+- *Communications/HR (Auto-Responder Agent):* Instead of simple "mailto" links, the Orchestrator delegates to a **Local Auto-Responder Agent** running on the FastAPI backend. This agent uses Python's `imaplib`/`smtplib` to download and reply to emails directly, and uses `Playwright` to stealthily scrape and auto-reply to `web.whatsapp.com`. The AI acts completely autonomously without sending your private messages to a cloud server like Twilio or SendGrid.
+- *Ad-Hoc Tooling:* The UI provides a local Markdown Notepad (saving to OPFS) and Browser-Native Reminders using IndexedDB and standard Web Notifications.
 
-### The Cloud Side (Control Plane)
-The cloud handles heavy lifting that does *not* require user data. It acts as a lightweight API gateway routing requests to high-speed external providers like `Groq` (using Llama-3) to take the user's plain-text questions and the metadata schema, and translates them into executable SQL or Python. Because only schema metadata and prompts are sent—never raw row data—the privacy guarantee remains absolute even when using third-party inference.
-*Note: The system is designed to easily swap out Groq for a self-hosted `Ollama` instance (e.g., Qwen2.5-Coder) in the future for cost control or customized fine-tuning.*
+### The Cloud Side (Local Control Plane)
+The control plane handles heavy lifting that does *not* run well in the browser. However, **it is strictly air-gapped and local**. It acts as a lightweight API gateway routing requests to a **Self-Hosted Ollama** instance (e.g., Qwen2.5-Coder, Llama-3). It translates plain-text questions and the metadata schema into executable SQL or Python. Because inference is 100% local, the privacy guarantee remains absolute. **No data, not even metadata or prompts, ever leave the user's machine.**
 
-The backend also exposes public datasets via `TimescaleDB` (e.g., public stock market ticks) which are streamed down to the client. The client can then join this public cloud data with their private local data inside `DuckDB-WASM`. Authentication is handled via standard Gmail/OAuth logins.
+The backend also exposes public datasets via `TimescaleDB` (e.g., public stock market ticks) which are streamed down to the client. The client can then join this public cloud data with their private local data inside `DuckDB-WASM`.
+
+**Backend Browser Automation:** For tasks that require processing orders on other websites (e.g., Shopify admin panels), where browser CORS blocks frontend scripts, the Orchestrator delegates the task to the FastAPI backend. The backend uses tools like `Playwright` to stealthily navigate, perform the action, and return the result.
 
 ### Privacy Guardrails & Opt-In Telemetry
 To maintain total privacy:
