@@ -1,4 +1,4 @@
-# Privacy-First "Work Done" Engine
+# Privacy-First "Octa Desktop" Engine
 
 This document outlines the architecture for a hybrid, privacy-first Software-as-a-Service (SaaS). The system guarantees data sovereignty by processing sensitive user data entirely within the browser, while leveraging a powerful cloud backend strictly for generating logic (code) and supplying public data.
 

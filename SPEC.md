@@ -1,6 +1,6 @@
 # Object Definitions & Framework
 
-This specification details the components comprising the Privacy-First "Work Done" Engine. The system relies on a hybrid execution strategy to ensure robust capabilities while strictly enforcing client-side data privacy.
+This specification details the components comprising the Privacy-First "Octa Desktop" Engine. The system relies on a hybrid execution strategy to ensure robust capabilities while strictly enforcing client-side data privacy.
 
 ## Object Details
 

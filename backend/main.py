@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import os
 import groq
 
-app = FastAPI(title="Work Done Engine Control Plane")
+app = FastAPI(title="Octa Desktop Engine Control Plane")
 
 app.add_middleware(
     CORSMiddleware,
