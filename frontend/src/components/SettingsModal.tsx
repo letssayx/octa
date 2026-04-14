@@ -7,7 +7,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-    const [settings, setSettings] = useState<Settings>({ llmProvider: 'webllm', groqApiKey: '' });
+    const [settings, setSettings] = useState<Settings>({ llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' });
 
     useEffect(() => {
         if (isOpen) {
@@ -32,15 +32,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <select
                         className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
                         value={settings.llmProvider}
-                        onChange={(e) => setSettings({ ...settings, llmProvider: e.target.value as 'webllm' | 'groq' })}
+                        onChange={(e) => setSettings({ ...settings, llmProvider: e.target.value as 'auto' | 'groq' | 'openrouter' | 'huggingface' })}
                     >
-                        <option value="webllm">WebLLM (Local, Slow/Limited)</option>
-                        <option value="groq">Groq (Cloud, Fast/Smart)</option>
+                        <option value="auto">Auto-Router (Best model for task)</option>
+                        <option value="groq">Groq (Fast / Llama3)</option>
+                        <option value="openrouter">OpenRouter (Coding / Qwen)</option>
+                        <option value="huggingface">Hugging Face (Vision / Specific)</option>
                     </select>
                 </div>
 
-                {settings.llmProvider === 'groq' && (
-                    <div className="mb-6">
+                {(settings.llmProvider === 'groq' || settings.llmProvider === 'auto') && (
+                    <div className="mb-4">
                         <label className="block text-sm font-medium mb-2">Groq API Key</label>
                         <input
                             type="password"
@@ -49,8 +51,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             value={settings.groqApiKey}
                             onChange={(e) => setSettings({ ...settings, groqApiKey: e.target.value })}
                         />
+                    </div>
+                )}
+
+                {(settings.llmProvider === 'openrouter' || settings.llmProvider === 'auto') && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium mb-2">OpenRouter API Key</label>
+                        <input
+                            type="password"
+                            placeholder="sk-or-v1-..."
+                            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                            value={settings.openRouterApiKey}
+                            onChange={(e) => setSettings({ ...settings, openRouterApiKey: e.target.value })}
+                        />
+                    </div>
+                )}
+
+                {(settings.llmProvider === 'huggingface' || settings.llmProvider === 'auto') && (
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium mb-2">Hugging Face API Key</label>
+                        <input
+                            type="password"
+                            placeholder="hf_..."
+                            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                            value={settings.hfApiKey}
+                            onChange={(e) => setSettings({ ...settings, hfApiKey: e.target.value })}
+                        />
                         <p className="text-xs text-gray-400 mt-1">
-                            Your key is stored locally in your browser.
+                            Keys are stored locally in your browser.
                         </p>
                     </div>
                 )}

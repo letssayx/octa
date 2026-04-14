@@ -1,7 +1,8 @@
-import { chatWithWebLLM, initWebLLM } from '../lib/webllm';
 // import { initDuckDB, executeLocalSQL } from '../lib/duckdb';
 import { executeLocalPython } from '../lib/pyodide';
 import { chatWithGroq } from '../lib/groq';
+import { chatWithOpenRouter } from '../lib/openrouter';
+import { chatWithHuggingFace } from '../lib/huggingface';
 
 export const TaskType = {
     ACCOUNTING_DATA_CRUNCHING: 'ACCOUNTING_DATA_CRUNCHING',
@@ -71,7 +72,7 @@ export class TaskOrchestrator {
 
             let generatedLogic = "";
             const settingsStr = localStorage.getItem('octa_settings');
-            let settings = { llmProvider: 'webllm', groqApiKey: '' };
+            let settings = { llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' };
             if (settingsStr) {
                 try {
                     settings = JSON.parse(settingsStr);
@@ -79,14 +80,23 @@ export class TaskOrchestrator {
             }
 
             const groqKey = settings.groqApiKey || import.meta.env.VITE_GROQ_API_KEY;
+            const openRouterKey = settings.openRouterApiKey;
+            const hfKey = settings.hfApiKey;
 
-            if ((settings.llmProvider === 'groq' || !settings.llmProvider) && groqKey && groqKey !== "your_key_here") {
-                 console.log("-> Using Groq API (Power User Mode)");
+            // Intelligent Routing for Accounting Task (Coding/Python Generation)
+            // Auto-Router uses open-source coding experts via OpenRouter (DeepSeek)
+            if ((settings.llmProvider === 'auto' || settings.llmProvider === 'openrouter') && openRouterKey) {
+                console.log("-> Routing to OpenRouter (DeepSeek Coder / Qwen)");
+                // Defaulting to deepseek-coder as it's an excellent open-source model for logical tasks
+                generatedLogic = (await chatWithOpenRouter(openRouterKey, prompt, systemPrompt, "deepseek/deepseek-coder")) || "";
+            } else if ((settings.llmProvider === 'auto' || settings.llmProvider === 'groq') && groqKey && groqKey !== "your_key_here") {
+                 console.log("-> Routing to Groq API (Fast Llama3)");
                  generatedLogic = (await chatWithGroq(groqKey, prompt, systemPrompt)) || "";
+            } else if ((settings.llmProvider === 'auto' || settings.llmProvider === 'huggingface') && hfKey) {
+                 console.log("-> Routing to Hugging Face API");
+                 generatedLogic = (await chatWithHuggingFace(hfKey, prompt, systemPrompt)) || "";
             } else {
-                 console.log("-> Routing to Local WebLLM Engine (Default Mode)");
-                 await initWebLLM((progress) => console.log(`[WebLLM Progress] ${progress.text}`));
-                 generatedLogic = (await chatWithWebLLM(systemPrompt, "")) || "";
+                 return { status: "error", action: "none", message: "Please set an API key in Settings (Groq, OpenRouter, or Hugging Face)." };
             }
 
             console.log("-> Executing generated logic locally...");
@@ -148,7 +158,7 @@ export class TaskOrchestrator {
         console.log("-> Routing Chat Task...");
         try {
             const settingsStr = localStorage.getItem('octa_settings');
-            let settings = { llmProvider: 'webllm', groqApiKey: '' };
+            let settings = { llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' };
             if (settingsStr) {
                 try {
                     settings = JSON.parse(settingsStr);
@@ -156,18 +166,25 @@ export class TaskOrchestrator {
             }
 
             const groqKey = settings.groqApiKey || import.meta.env.VITE_GROQ_API_KEY;
+            const openRouterKey = settings.openRouterApiKey;
+            const hfKey = settings.hfApiKey;
+            const systemPrompt = `You are a helpful AI assistant. Context rules: ${context}`;
 
-            if (settings.llmProvider === 'groq' && groqKey && groqKey !== "your_key_here") {
-                console.log("-> Using Groq API for Chat");
-                const systemPrompt = `You are a helpful AI assistant. Context rules: ${context}`;
+            // General chat favors speed (Groq) or standard models
+            if ((settings.llmProvider === 'auto' || settings.llmProvider === 'groq') && groqKey && groqKey !== "your_key_here") {
+                console.log("-> Routing to Groq API (Fast Chat)");
                 const response = await chatWithGroq(groqKey, prompt, systemPrompt);
                 return { status: "success", action: "local_chat", message: response };
-            } else {
-                console.log("-> Routing to Local WebLLM Engine (In-Browser)...");
-                // Attempt to init if not already (this downloads the model on first run)
-                await initWebLLM((progress) => console.log(`[WebLLM Progress] ${progress.text}`));
-                const response = await chatWithWebLLM(prompt, context);
+            } else if ((settings.llmProvider === 'auto' || settings.llmProvider === 'openrouter') && openRouterKey) {
+                console.log("-> Routing to OpenRouter");
+                const response = await chatWithOpenRouter(openRouterKey, prompt, systemPrompt, "meta-llama/llama-3.1-8b-instruct");
                 return { status: "success", action: "local_chat", message: response };
+            } else if ((settings.llmProvider === 'auto' || settings.llmProvider === 'huggingface') && hfKey) {
+                console.log("-> Routing to Hugging Face API");
+                const response = await chatWithHuggingFace(hfKey, prompt, systemPrompt);
+                return { status: "success", action: "local_chat", message: response };
+            } else {
+                return { status: "error", action: "none", message: "Please set an API key in Settings (Groq, OpenRouter, or Hugging Face)." };
             }
         } catch (e: any) {
              console.error("AI Chat Error:", e);

@@ -3,6 +3,8 @@ export type Message = {
     role: 'user' | 'system';
     content: string;
     timestamp: number;
+    action?: string;
+    generatedLogic?: string;
 };
 
 export type FileNode = { name: string; type: 'file' | 'context' };
@@ -14,12 +16,22 @@ export type FolderNode = {
     chatHistory: Message[];
 };
 
+export type SavedAutomation = {
+    id: string;
+    name: string;
+    pythonCode: string;
+    timestamp: number;
+};
+
 const STORAGE_KEY = 'octa_folders';
 const SETTINGS_KEY = 'octa_settings';
+const AUTOMATIONS_KEY = 'octa_automations';
 
 export type Settings = {
-    llmProvider: 'webllm' | 'groq';
+    llmProvider: 'groq' | 'openrouter' | 'huggingface' | 'auto';
     groqApiKey: string;
+    openRouterApiKey: string;
+    hfApiKey: string;
 };
 
 export const loadSettings = (): Settings => {
@@ -27,7 +39,7 @@ export const loadSettings = (): Settings => {
     if (data) {
         return JSON.parse(data);
     }
-    return { llmProvider: 'webllm', groqApiKey: '' };
+    return { llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' };
 };
 
 export const saveSettings = (settings: Settings) => {
@@ -52,4 +64,16 @@ export const loadFolders = (): FolderNode[] => {
 
 export const saveFolders = (folders: FolderNode[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(folders));
+};
+
+export const loadAutomations = (): SavedAutomation[] => {
+    const data = localStorage.getItem(AUTOMATIONS_KEY);
+    if (data) {
+        return JSON.parse(data);
+    }
+    return [];
+};
+
+export const saveAutomations = (automations: SavedAutomation[]) => {
+    localStorage.setItem(AUTOMATIONS_KEY, JSON.stringify(automations));
 };

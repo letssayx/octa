@@ -3,40 +3,50 @@ import { Workbook } from "@fortune-sheet/react"
 import "@fortune-sheet/react/dist/index.css"
 import Papa from 'papaparse'
 import { TaskOrchestrator } from './orchestrator/Orchestrator'
-import { loadFolders, saveFolders } from './lib/store'
-import type { FolderNode } from './lib/store'
-import { writeDataToPyodide } from './lib/pyodide'
+import { loadFolders, saveFolders, loadAutomations, saveAutomations } from './lib/store'
+import type { FolderNode, SavedAutomation } from './lib/store'
+import { writeDataToPyodide, executeLocalPython } from './lib/pyodide'
 import { SettingsModal } from './components/SettingsModal'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { X, FileText, Folder } from 'lucide-react';
 import './App.css'
 
 // Helper component for message clipping
-const ChatBubble = ({ message }: { message: string }) => {
+const ChatBubble = ({ message, action, generatedLogic, onSaveAutomation }: { message: string, action?: string, generatedLogic?: string, onSaveAutomation?: (logic: string) => void }) => {
     const [expanded, setExpanded] = useState(false);
     const MAX_LENGTH = 300;
     const isLong = message.length > MAX_LENGTH;
 
-    if (!isLong) {
-        return <div className="message-bubble">{message}</div>;
-    }
-
     return (
-        <div className="message-bubble">
-            {expanded ? message : `${message.substring(0, MAX_LENGTH)}...`}
-            <div
-                style={{fontSize: '0.8rem', color: '#66b2ff', cursor: 'pointer', marginTop: '4px', textAlign: 'right'}}
-                onClick={() => setExpanded(!expanded)}
-            >
-                {expanded ? 'Show Less ⬆' : 'Read More ⬇'}
-            </div>
+        <div className="message-bubble" style={{display: 'flex', flexDirection: 'column'}}>
+             <pre style={{whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0}}>
+                 {!isLong || expanded ? message : `${message.substring(0, MAX_LENGTH)}...`}
+             </pre>
+             {isLong && (
+                 <button
+                    onClick={() => setExpanded(!expanded)}
+                    style={{background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.75rem', marginTop: '4px', padding: 0, alignSelf: 'flex-start'}}
+                 >
+                     {expanded ? 'Show Less ↑' : 'Read More ↓'}
+                 </button>
+             )}
+             {action === 'python_compute' && generatedLogic && onSaveAutomation && (
+                 <button
+                    onClick={() => onSaveAutomation(generatedLogic)}
+                    className="btn-primary"
+                    style={{marginTop: '12px', fontSize: '0.75rem', padding: '0.3rem 0.6rem', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '4px'}}
+                 >
+                     <span>⚡</span> Save as Automation
+                 </button>
+             )}
         </div>
-    );
-};
+    )
+}
 
 function App() {
   const [folders, setFolders] = useState<FolderNode[]>(loadFolders())
   const [activeFolderId, setActiveFolderId] = useState<string>(folders[0]?.id || '')
+  const [automations, setAutomations] = useState<SavedAutomation[]>(loadAutomations())
   const [chatInput, setChatInput] = useState('')
   const [workspaceState, setWorkspaceState] = useState<string>('Empty Workspace')
   const [sheetData, setSheetData] = useState<any[]>([{ name: "Sheet1", celldata: [] }])
@@ -58,27 +68,79 @@ function App() {
       saveFolders(folders);
   }, [folders])
 
+  // Persist automations when they change
+  useEffect(() => {
+      saveAutomations(automations);
+  }, [automations])
+
   useEffect(() => {
     if (chatHistoryRef.current) {
       chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight
     }
   }, [activeFolder.chatHistory])
 
+  // 1. Update the local context's chat history
+  const updateHistory = (role: 'user' | 'system', content: string, action?: string, generatedLogic?: string) => {
+      setFolders(prev => prev.map(f => {
+          if (f.id === activeFolderId) {
+              return { ...f, chatHistory: [...f.chatHistory, {role, content, timestamp: Date.now(), action, generatedLogic}] }
+          }
+          return f;
+      }))
+  }
+
+  const handleRunAutomation = async (automation: SavedAutomation) => {
+      updateHistory('user', `⚡ Executing automation: ${automation.name}`);
+      setWorkspaceState('Running zero-token local automation...');
+
+      try {
+          const pyResult = await executeLocalPython(automation.pythonCode);
+          let dataResult: any = null;
+
+          if (pyResult && typeof pyResult.toJs === 'function') {
+              dataResult = pyResult.toJs();
+          } else if (typeof pyResult === 'string') {
+              try {
+                   dataResult = JSON.parse(pyResult);
+              } catch(e) {
+                   dataResult = [{ "Result": pyResult }];
+              }
+          } else {
+              dataResult = pyResult;
+          }
+
+          if (!Array.isArray(dataResult)) {
+              dataResult = [{ "Result": String(pyResult) }];
+          }
+
+          setWorkspaceState(`Data Grid / FortuneSheet View [Context: ${activeFolder.name}]`);
+
+          if (dataResult && Array.isArray(dataResult)) {
+              const headers = Object.keys(dataResult[0] || {});
+              const celldata: any[] = [];
+              headers.forEach((h, col) => celldata.push({ r: 0, c: col, v: { v: h, m: h, bl: 1 } }));
+              dataResult.forEach((row, r) => {
+                  headers.forEach((h, c) => {
+                      const val = String(row[h] || '');
+                      celldata.push({ r: r+1, c, v: { v: val, m: val } });
+                  });
+              });
+              setSheetData([{ name: "Sheet1", celldata }]);
+              setShowFortuneSheet(true);
+          }
+
+          updateHistory('system', `Automation "${automation.name}" executed successfully.`, 'python_compute', automation.pythonCode);
+      } catch (e: any) {
+          console.error("Automation error:", e);
+          updateHistory('system', `[Execution Error]\n${e.message}`, 'none');
+      }
+  };
+
   const handleRunTask = async () => {
     if (!chatInput.trim()) return;
 
     const userPrompt = chatInput;
     setChatInput('');
-
-    // 1. Update the local context's chat history
-    const updateHistory = (role: 'user' | 'system', content: string) => {
-        setFolders(prev => prev.map(f => {
-            if (f.id === activeFolderId) {
-                return { ...f, chatHistory: [...f.chatHistory, {role, content, timestamp: Date.now()}] }
-            }
-            return f;
-        }))
-    }
 
     updateHistory('user', userPrompt);
 
@@ -135,18 +197,22 @@ function App() {
     const result = await TaskOrchestrator.handleTask(userPrompt, activeFolder.name, contextStr)
 
     let systemResponse = "Task completed.";
+    let actionType = "none";
+    let generatedLogic = "";
     setShowFortuneSheet(false);
 
     if (typeof result === 'string') {
         systemResponse = result;
     } else {
         systemResponse = result.message || "Done.";
+        actionType = result.action;
         if (result.action === 'duckdb_sql' || result.action === 'python_compute') {
             setWorkspaceState(`Data Grid / FortuneSheet View [Context: ${activeFolder.name}]`);
             const dataResult = (result as any).data;
 
             if (result.action === 'python_compute') {
-                setPendingLogicToLock((result as any).generatedLogic);
+                generatedLogic = (result as any).generatedLogic;
+                setPendingLogicToLock(generatedLogic);
             }
 
             if (dataResult && Array.isArray(dataResult)) {
@@ -173,7 +239,7 @@ function App() {
         }
     }
 
-    updateHistory('system', systemResponse);
+    updateHistory('system', systemResponse, actionType, generatedLogic);
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -289,6 +355,7 @@ function App() {
             </div>
 
             <div className="sidebar-nav" style={{flex: 1, overflowY: 'auto'}}>
+              <h3 style={{fontSize: '0.8rem', padding: '0.5rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '0.5rem'}}>Folders</h3>
               {folders.map(folder => (
                   <div key={folder.id} className="folder-wrapper">
                       <div
@@ -324,6 +391,30 @@ function App() {
                   </div>
               ))}
               <button className="add-folder-btn" onClick={createNewFolder}>+ New Folder</button>
+
+              {automations.length > 0 && (
+                  <div style={{marginTop: '2rem'}}>
+                      <h3 style={{fontSize: '0.8rem', padding: '0.5rem', color: 'var(--text-muted)', textTransform: 'uppercase'}}>My Automations</h3>
+                      <div className="folder-contents">
+                          {automations.map(auto => (
+                              <div key={auto.id} className="file-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}} title="Click to run on current data">
+                                  <div onClick={() => handleRunAutomation(auto)} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--accent-color)'}}>
+                                      <span style={{fontSize: '1rem'}}>⚡</span>
+                                      <span style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px'}}>{auto.name}</span>
+                                  </div>
+                                  <button className="delete-btn" onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newAuto = automations.filter(a => a.id !== auto.id);
+                                      setAutomations(newAuto);
+                                      saveAutomations(newAuto);
+                                  }}>
+                                      <X size={14} />
+                                  </button>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
             </div>
           </Panel>
 
@@ -340,7 +431,23 @@ function App() {
                   <div style={{fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px', textAlign: m.role === 'user' ? 'right' : 'left'}}>
                       {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
-                  <ChatBubble message={m.content} />
+                  <ChatBubble
+                      message={m.content}
+                      action={m.action}
+                      generatedLogic={m.generatedLogic}
+                      onSaveAutomation={(logic) => {
+                          const name = window.prompt("Name this automation for 1-click repetitive runs (e.g. 'Monthly Profit Calculation'):");
+                          if (name) {
+                              const newAuto = {
+                                  id: `auto-${Date.now()}`,
+                                  name,
+                                  pythonCode: logic,
+                                  timestamp: Date.now()
+                              };
+                              setAutomations(prev => [...prev, newAuto]);
+                          }
+                      }}
+                  />
                 </div>
               ))}
             </div>
