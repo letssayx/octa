@@ -5,8 +5,10 @@ import Papa from 'papaparse'
 import { TaskOrchestrator } from './orchestrator/Orchestrator'
 import { loadFolders, saveFolders } from './lib/store'
 import type { FolderNode } from './lib/store'
-import { initWebLLM } from './lib/webllm'
 import { writeDataToPyodide } from './lib/pyodide'
+import { SettingsModal } from './components/SettingsModal'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
+import { X, FileText, Folder } from 'lucide-react';
 import './App.css'
 
 // Helper component for message clipping
@@ -45,7 +47,6 @@ function App() {
 
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false)
-  const [webLlmProgress, setWebLlmProgress] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatHistoryRef = useRef<HTMLDivElement>(null)
@@ -81,8 +82,56 @@ function App() {
 
     updateHistory('user', userPrompt);
 
+    // Extract sheet data for context and Pyodide
+    let sheetContext = "";
+    if (sheetData && sheetData.length > 0 && sheetData[0].celldata && sheetData[0].celldata.length > 0) {
+        try {
+            // Convert FortuneSheet cell data to a simple 2D array
+            const cells = sheetData[0].celldata;
+            let maxRow = 0;
+            let maxCol = 0;
+            cells.forEach((c: any) => {
+                if (c.r > maxRow) maxRow = c.r;
+                if (c.c > maxCol) maxCol = c.c;
+            });
+
+            const grid: string[][] = Array(maxRow + 1).fill(null).map(() => Array(maxCol + 1).fill(""));
+            cells.forEach((c: any) => {
+                grid[c.r][c.c] = c.v?.m || c.v?.v || "";
+            });
+
+            // Generate CSV string
+            const csvContent = grid.map(row => row.join(",")).join("\n");
+
+            // Write to Pyodide so Python can access it
+            writeDataToPyodide("sheet_data.csv", csvContent);
+
+            // Extract headers and sample data for the LLM context
+            const headers = grid[0] || [];
+            const sampleData = grid.slice(1, 6).map(row => row.join(", ")).join("; ");
+            sheetContext = `Data pasted in Active Sheet - Columns: [${headers.join(', ')}]. Sample rows: ${sampleData}. The file is saved as 'sheet_data.csv' on the filesystem.`;
+
+            // Add implicitly to folder files if not there
+            if (!activeFolder.files.find(f => f.name === 'sheet_data.csv')) {
+               setFolders(prev => prev.map(f => {
+                   if (f.id === activeFolderId) {
+                       return { ...f, files: [...f.files, { name: 'sheet_data.csv', type: 'file' }] }
+                   }
+                   return f;
+               }));
+            }
+        } catch(e) {
+            console.error("Failed to parse sheet data", e);
+        }
+    }
+
+    // Aggregate contextual memory
+    const historyContext = activeFolder.chatHistory
+        .filter(m => m.role === 'system' && (m.content.includes("Schema Columns") || m.content.includes("LOGIC LOCKED")))
+        .map(m => m.content).join('\n');
+
     // Execute Task Routing (WebLLM locally or Groq externally)
-    const contextStr = `This chat is strictly bounded to the folder: ${activeFolder.name}. Provide concise answers.`;
+    const contextStr = `This chat is strictly bounded to the folder: ${activeFolder.name}.\nContext constraints:\n${historyContext}\n\n${sheetContext}`;
     const result = await TaskOrchestrator.handleTask(userPrompt, activeFolder.name, contextStr)
 
     let systemResponse = "Task completed.";
@@ -147,10 +196,6 @@ function App() {
       setActiveFolderId(newFolder.id);
   }
 
-  const handleSaveSettings = () => {
-      setShowSettings(false);
-  }
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -165,10 +210,11 @@ function App() {
           // Parse only to get headers to prevent token explosion for the AI
           Papa.parse(csvData, {
               header: true,
-              preview: 1, // Only read the first row for headers
+              preview: 5, // Read the first 5 rows for sample data
               complete: (results) => {
                   const headers = results.meta.fields || [];
-                  const schemaString = `File '${file.name}' attached. Schema Columns: [${headers.join(', ')}]`;
+                  const sampleData = JSON.stringify(results.data);
+                  const schemaString = `File '${file.name}' attached. Schema Columns: [${headers.join(', ')}]. Sample Data: ${sampleData}`;
 
                   // Update folder files and append schema to context
                   setFolders(prev => prev.map(f => {
@@ -210,158 +256,167 @@ function App() {
       }
   }
 
-  // Pre-load WebLLM to cache the model if desired
-  const handlePreloadAI = async () => {
-      setWebLlmProgress('Initializing local AI (this takes a moment to download weights)...');
-      try {
-          await initWebLLM((progress) => setWebLlmProgress(`Local AI: ${progress.text}`));
-          setWebLlmProgress('Local AI Ready ✅');
-      } catch (e) {
-          setWebLlmProgress('Failed to load Local AI.');
+  const deleteFile = (e: React.MouseEvent, folderId: string, filename: string) => {
+      e.stopPropagation();
+      setFolders(prev => prev.map(f => {
+          if (f.id === folderId) {
+              return { ...f, files: f.files.filter(file => file.name !== filename) }
+          }
+          return f;
+      }));
+  }
+
+  const deleteFolder = (e: React.MouseEvent, folderId: string) => {
+      e.stopPropagation();
+      if (folders.length <= 1) return; // don't delete last folder
+      setFolders(prev => prev.filter(f => f.id !== folderId));
+      if (activeFolderId === folderId) {
+          const remaining = folders.filter(f => f.id !== folderId);
+          setActiveFolderId(remaining[0].id);
       }
   }
 
   return (
     <div className="octa-desktop">
-      {/* SETTINGS MODAL */}
-      {showSettings && (
-          <div className="modal-overlay">
-              <div className="modal-content">
-                  <h3>Octa Settings</h3>
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
-                  <p style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>
-                    Octa Desktop is running in 100% Local, Air-Gapped Mode.
-                    All logic and data processing happens entirely in your browser using WebLLM and DuckDB-WASM.
-                  </p>
-
-                  <label style={{marginTop: '1rem'}}>Local AI Engine (Default Offline Mode)</label>
-                  <button className="btn-secondary" style={{width: '100%', marginBottom: '1.5rem', marginTop: '0.5rem'}} onClick={handlePreloadAI}>
-                      {webLlmProgress || 'Preload WebLLM Engine'}
-                  </button>
-
-                  <div className="modal-actions">
-                      <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
-                      <button className="btn-primary" onClick={handleSaveSettings}>Save</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* LEFT SIDEBAR - FILE EXPLORER */}
-      <div className="sidebar">
-        <div className="sidebar-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <h2>Octa Desktop</h2>
-          <button className="btn-secondary" style={{padding: '0.2rem 0.5rem'}} onClick={() => setShowSettings(true)}>⚙️</button>
-        </div>
-
-        <div className="sidebar-nav">
-          {folders.map(folder => (
-              <div key={folder.id} className="folder-wrapper">
-                  <div
-                    className={`folder-header ${activeFolderId === folder.id ? 'active' : ''}`}
-                    onClick={() => setActiveFolderId(folder.id)}
-                  >
-                      <span className="folder-icon">📁</span>
-                      {folder.name}
-                  </div>
-                  {activeFolderId === folder.id && (
-                      <div className="folder-contents">
-                          {folder.files.map((file, idx) => (
-                              <div key={idx} className="file-item">
-                                  <span className="file-icon">📄</span>
-                                  {file.name}
-                              </div>
-                          ))}
-                      </div>
-                  )}
-              </div>
-          ))}
-          <button className="add-folder-btn" onClick={createNewFolder}>+ New Folder</button>
-        </div>
-      </div>
-
-      {/* CENTER CHAT */}
-      <div className="chat-container">
-        <div className="chat-header">
-            Context Bounded to: {activeFolder.name}
-        </div>
-        <div className="chat-history" ref={chatHistoryRef}>
-          {activeFolder.chatHistory.map((m, i) => (
-            <div key={i} className={`chat-message ${m.role}`}>
-              <div style={{fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px', textAlign: m.role === 'user' ? 'right' : 'left'}}>
-                  {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-              <ChatBubble message={m.content} />
+      <PanelGroup orientation="horizontal" style={{height: '100vh'}}>
+          {/* LEFT SIDEBAR - FILE EXPLORER */}
+          <Panel defaultSize={20} minSize={15} maxSize={30} className="sidebar" style={{borderRight: '1px solid var(--border-color)', height: '100vh', display: 'flex', flexDirection: 'column'}}>
+            <div className="sidebar-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <h2>Octa Desktop</h2>
+              <button className="btn-secondary" style={{padding: '0.2rem 0.5rem'}} onClick={() => setShowSettings(true)}>⚙️</button>
             </div>
-          ))}
-        </div>
 
-        <div className="chat-input-area">
-          <div className="input-wrapper">
-            <button
-                className="attach-btn"
-                title="Attach Data File"
-                onClick={() => fileInputRef.current?.click()}
-            >
-                📎
-            </button>
-            <input
-              type="file"
-              accept=".csv"
-              style={{display: 'none'}}
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-            />
-            <input
-              className="chat-input"
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={`Message Octa inside "${activeFolder.name}"...`}
-            />
-            <button className="send-btn" onClick={handleRunTask}>↑</button>
-          </div>
-          <div style={{textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px'}}>
-            Implicit Grounded Memory active for this folder.
-          </div>
-        </div>
-      </div>
+            <div className="sidebar-nav" style={{flex: 1, overflowY: 'auto'}}>
+              {folders.map(folder => (
+                  <div key={folder.id} className="folder-wrapper">
+                      <div
+                        className={`folder-header ${activeFolderId === folder.id ? 'active' : ''}`}
+                        onClick={() => setActiveFolderId(folder.id)}
+                        style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}
+                      >
+                          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                              <Folder size={16} />
+                              {folder.name}
+                          </div>
+                          {folders.length > 1 && (
+                              <button className="delete-btn" onClick={(e) => deleteFolder(e, folder.id)}>
+                                  <X size={14} />
+                              </button>
+                          )}
+                      </div>
+                      {activeFolderId === folder.id && (
+                          <div className="folder-contents">
+                              {folder.files.map((file, idx) => (
+                                  <div key={idx} className="file-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                      <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                          <FileText size={14} />
+                                          <span style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px'}} title={file.name}>{file.name}</span>
+                                      </div>
+                                      <button className="delete-btn" onClick={(e) => deleteFile(e, folder.id, file.name)}>
+                                          <X size={14} />
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+              ))}
+              <button className="add-folder-btn" onClick={createNewFolder}>+ New Folder</button>
+            </div>
+          </Panel>
 
-      {/* RIGHT WORKSPACE */}
-      <div className="workspace-container">
-        <div className="workspace-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <h3 className="workspace-title">Workspace</h3>
-          <div>
-            <button
-              className="btn-secondary"
-              style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem', marginRight: '8px'}}
-              onClick={() => { setShowFortuneSheet(true); setWorkspaceState('Blank Sheet'); }}
-            >
-               📝 Open Blank Sheet
-            </button>
-            {pendingLogicToLock && (
+          <PanelResizeHandle className="resize-handle" />
+
+          {/* CENTER CHAT */}
+          <Panel defaultSize={35} minSize={25} className="chat-container" style={{height: '100vh', display: 'flex', flexDirection: 'column'}}>
+            <div className="chat-header">
+                Context Bounded to: {activeFolder.name}
+            </div>
+            <div className="chat-history" ref={chatHistoryRef} style={{flex: 1}}>
+              {activeFolder.chatHistory.map((m, i) => (
+                <div key={i} className={`chat-message ${m.role}`}>
+                  <div style={{fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px', textAlign: m.role === 'user' ? 'right' : 'left'}}>
+                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  <ChatBubble message={m.content} />
+                </div>
+              ))}
+            </div>
+
+            <div className="chat-input-area">
+              <div className="input-wrapper">
                 <button
-                  className="btn-primary"
-                  style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem'}}
-                  onClick={lockVerificationLogic}
+                    className="attach-btn"
+                    title="Attach Data File"
+                    onClick={() => fileInputRef.current?.click()}
                 >
-                   🔒 Lock Verification Logic
+                    📎
                 </button>
-            )}
-          </div>
-        </div>
-        <div className="workspace-content" style={{padding: showFortuneSheet ? 0 : '1rem'}}>
-          {showFortuneSheet ? (
-              <div style={{width: '100%', height: '100%', background: '#fff'}}>
-                  <Workbook data={sheetData} />
+                <input
+                  type="file"
+                  accept=".csv"
+                  style={{display: 'none'}}
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                <input
+                  className="chat-input"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Message Octa inside "${activeFolder.name}"...`}
+                />
+                <button className="send-btn" onClick={handleRunTask}>↑</button>
               </div>
-          ) : (
-              <div className="placeholder-grid">
-                {workspaceState}
+              <div style={{textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px'}}>
+                Implicit Grounded Memory active for this folder.
               </div>
-          )}
-        </div>
-      </div>
+            </div>
+          </Panel>
+
+          <PanelResizeHandle className="resize-handle" />
+
+          {/* RIGHT WORKSPACE */}
+          <Panel defaultSize={45} minSize={30} className="workspace-container" style={{height: '100vh', display: 'flex', flexDirection: 'column'}}>
+            <div className="workspace-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <h3 className="workspace-title">Workspace</h3>
+              <div>
+                <button
+                  className="btn-secondary"
+                  style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem', marginRight: '8px'}}
+                  onClick={() => { setShowFortuneSheet(true); setWorkspaceState('Blank Sheet'); }}
+                >
+                   📝 Open Blank Sheet
+                </button>
+                {pendingLogicToLock && (
+                    <button
+                      className="btn-primary"
+                      style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem'}}
+                      onClick={lockVerificationLogic}
+                    >
+                       🔒 Lock Verification Logic
+                    </button>
+                )}
+              </div>
+            </div>
+            <div className="workspace-content" style={{padding: showFortuneSheet ? 0 : '1rem', flex: 1}}>
+              {showFortuneSheet ? (
+                  <div style={{width: '100%', height: '100%', background: '#fff'}}>
+                  <Workbook
+                      data={sheetData}
+                      onChange={(data) => setSheetData(data)}
+                  />
+                  </div>
+              ) : (
+                  <div className="placeholder-grid">
+                    {workspaceState}
+                  </div>
+              )}
+            </div>
+          </Panel>
+      </PanelGroup>
     </div>
   )
 }

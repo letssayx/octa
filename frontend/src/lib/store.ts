@@ -15,6 +15,24 @@ export type FolderNode = {
 };
 
 const STORAGE_KEY = 'octa_folders';
+const SETTINGS_KEY = 'octa_settings';
+
+export type Settings = {
+    llmProvider: 'webllm' | 'groq';
+    groqApiKey: string;
+};
+
+export const loadSettings = (): Settings => {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) {
+        return JSON.parse(data);
+    }
+    return { llmProvider: 'webllm', groqApiKey: '' };
+};
+
+export const saveSettings = (settings: Settings) => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+};
 
 export const loadFolders = (): FolderNode[] => {
     const data = localStorage.getItem(STORAGE_KEY);

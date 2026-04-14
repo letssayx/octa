@@ -6,7 +6,7 @@ let pyodideInstance: PyodideInterface | null = null;
 export const initPyodide = async () => {
     if (!pyodideInstance) {
         pyodideInstance = await loadPyodide({
-            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/"
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/"
         });
         await pyodideInstance.loadPackage("pandas"); // Load common data science packages if needed
         console.log("Pyodide initialized locally.");
