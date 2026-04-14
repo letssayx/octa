@@ -7,7 +7,14 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-    const [settings, setSettings] = useState<Settings>({ llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' });
+    const [settings, setSettings] = useState<Settings>({
+        llmProvider: 'auto',
+        groqApiKey: '',
+        openRouterApiKey: '',
+        hfApiKey: '',
+        theme: 'dark',
+        osStyle: 'windows'
+    });
 
     useEffect(() => {
         if (isOpen) {
@@ -24,13 +31,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-[#242424] p-6 rounded-lg w-96 border border-[#3A3A3A] text-[#E0E0E0]">
+            <div className="modal-content w-96">
                 <h2 className="text-xl font-semibold mb-4">Settings</h2>
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Theme</label>
+                    <select
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
+                        value={settings.theme}
+                        onChange={(e) => setSettings({ ...settings, theme: e.target.value as 'light' | 'dark' | 'system' })}
+                    >
+                        <option value="system">System Auto</option>
+                        <option value="light">Light Mode</option>
+                        <option value="dark">DeepSeek Dark</option>
+                    </select>
+                </div>
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Window Style</label>
+                    <select
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
+                        value={settings.osStyle}
+                        onChange={(e) => setSettings({ ...settings, osStyle: e.target.value as 'windows' | 'mac' | 'linux' })}
+                    >
+                        <option value="windows">Windows Standard</option>
+                        <option value="mac">macOS Glass</option>
+                        <option value="linux">Linux Ubuntu</option>
+                    </select>
+                </div>
+
+                <hr className="my-4 border-[var(--border-color)]" />
 
                 <div className="mb-4">
                     <label className="block text-sm font-medium mb-2">LLM Provider</label>
                     <select
-                        className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
                         value={settings.llmProvider}
                         onChange={(e) => setSettings({ ...settings, llmProvider: e.target.value as 'auto' | 'groq' | 'openrouter' | 'huggingface' })}
                     >
@@ -47,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <input
                             type="password"
                             placeholder="gsk_..."
-                            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
                             value={settings.groqApiKey}
                             onChange={(e) => setSettings({ ...settings, groqApiKey: e.target.value })}
                         />
@@ -60,7 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <input
                             type="password"
                             placeholder="sk-or-v1-..."
-                            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
                             value={settings.openRouterApiKey}
                             onChange={(e) => setSettings({ ...settings, openRouterApiKey: e.target.value })}
                         />
@@ -73,11 +108,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <input
                             type="password"
                             placeholder="hf_..."
-                            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded p-2 focus:outline-none focus:border-[#4A4A4A]"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 focus:outline-none focus:border-[var(--accent-color)] text-[var(--text-heading)]"
                             value={settings.hfApiKey}
                             onChange={(e) => setSettings({ ...settings, hfApiKey: e.target.value })}
                         />
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
                             Keys are stored locally in your browser.
                         </p>
                     </div>
@@ -86,13 +121,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <div className="flex justify-end space-x-2">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 rounded text-sm hover:bg-[#3A3A3A] transition-colors"
+                        className="btn-secondary px-4 py-2 rounded text-sm transition-colors"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={handleSave}
-                        className="px-4 py-2 rounded text-sm bg-blue-600 hover:bg-blue-700 transition-colors text-white"
+                        className="btn-primary px-4 py-2 rounded text-sm transition-colors"
                     >
                         Save
                     </button>

@@ -3,7 +3,7 @@ import { Workbook } from "@fortune-sheet/react"
 import "@fortune-sheet/react/dist/index.css"
 import Papa from 'papaparse'
 import { TaskOrchestrator } from './orchestrator/Orchestrator'
-import { loadFolders, saveFolders, loadAutomations, saveAutomations } from './lib/store'
+import { loadFolders, saveFolders, loadAutomations, saveAutomations, loadSettings } from './lib/store'
 import type { FolderNode, SavedAutomation } from './lib/store'
 import { writeDataToPyodide, executeLocalPython } from './lib/pyodide'
 import { SettingsModal } from './components/SettingsModal'
@@ -44,6 +44,7 @@ const ChatBubble = ({ message, action, generatedLogic, onSaveAutomation }: { mes
 }
 
 function App() {
+  const [_settings, setSettings] = useState(loadSettings())
   const [folders, setFolders] = useState<FolderNode[]>(loadFolders())
   const [activeFolderId, setActiveFolderId] = useState<string>(folders[0]?.id || '')
   const [automations, setAutomations] = useState<SavedAutomation[]>(loadAutomations())
@@ -72,6 +73,21 @@ function App() {
   useEffect(() => {
       saveAutomations(automations);
   }, [automations])
+
+  // Apply Theme & OS Style
+  useEffect(() => {
+      const s = loadSettings();
+      setSettings(s);
+
+      const isDark = s.theme === 'dark' || (s.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+          document.documentElement.removeAttribute('data-theme');
+      }
+
+      document.documentElement.setAttribute('data-os', s.osStyle);
+  }, [showSettings]);
 
   useEffect(() => {
     if (chatHistoryRef.current) {
@@ -350,7 +366,14 @@ function App() {
           {/* LEFT SIDEBAR - FILE EXPLORER */}
           <Panel defaultSize={20} minSize={15} maxSize={30} className="sidebar" style={{borderRight: '1px solid var(--border-color)', height: '100vh', display: 'flex', flexDirection: 'column'}}>
             <div className="sidebar-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <h2>Octa Desktop</h2>
+              <div style={{display: 'flex', alignItems: 'center'}}>
+                  <div className="mac-traffic-lights">
+                      <span className="close"></span>
+                      <span className="min"></span>
+                      <span className="max"></span>
+                  </div>
+                  <h2>Octa Desktop</h2>
+              </div>
               <button className="btn-secondary" style={{padding: '0.2rem 0.5rem'}} onClick={() => setShowSettings(true)}>⚙️</button>
             </div>
 

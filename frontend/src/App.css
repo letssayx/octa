@@ -64,6 +64,56 @@
 .sidebar-header {
   padding: 1rem;
   border-bottom: 1px solid var(--border-color);
+  background-color: var(--header-bg, transparent);
+  border-top-left-radius: var(--window-radius, 0);
+}
+
+/* MAC OS Window Style */
+[data-os='mac'] .octa-desktop {
+  padding: 1rem;
+  background-color: #000;
+}
+[data-os='mac'] .sidebar,
+[data-os='mac'] .chat-container,
+[data-os='mac'] .workspace-container {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  margin-right: 2px;
+}
+[data-os='mac'] .mac-traffic-lights {
+  display: flex !important;
+  gap: 8px;
+  margin-right: 12px;
+}
+[data-os='mac'] .mac-traffic-lights span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+[data-os='mac'] .mac-traffic-lights .close { background: #ff5f56; }
+[data-os='mac'] .mac-traffic-lights .min { background: #ffbd2e; }
+[data-os='mac'] .mac-traffic-lights .max { background: #27c93f; }
+
+/* LINUX / Ubuntu Window Style */
+[data-os='linux'] .octa-desktop {
+  padding: 0;
+}
+[data-os='linux'] .sidebar-header {
+  background-color: #3e3e3e; /* Ubuntu dark header */
+  color: #fff;
+}
+[data-os='linux'] .sidebar-header h2 {
+  color: #fff;
+}
+[data-os='linux'] .btn-secondary {
+  border-color: #555;
+}
+
+.mac-traffic-lights {
+  display: none;
 }
 
 .sidebar-header h2 {

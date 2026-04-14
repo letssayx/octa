@@ -32,6 +32,8 @@ export type Settings = {
     groqApiKey: string;
     openRouterApiKey: string;
     hfApiKey: string;
+    theme: 'light' | 'dark' | 'system';
+    osStyle: 'windows' | 'mac' | 'linux';
 };
 
 export const loadSettings = (): Settings => {
@@ -39,7 +41,14 @@ export const loadSettings = (): Settings => {
     if (data) {
         return JSON.parse(data);
     }
-    return { llmProvider: 'auto', groqApiKey: '', openRouterApiKey: '', hfApiKey: '' };
+    return {
+        llmProvider: 'auto',
+        groqApiKey: '',
+        openRouterApiKey: '',
+        hfApiKey: '',
+        theme: 'dark',
+        osStyle: 'windows'
+    };
 };
 
 export const saveSettings = (settings: Settings) => {
@@ -66,12 +75,28 @@ export const saveFolders = (folders: FolderNode[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(folders));
 };
 
+const DEFAULT_SKILLS: SavedAutomation[] = [
+    {
+        id: 'skill-clean-data',
+        name: 'Skill: Clean Data (Drop NaN)',
+        pythonCode: `import pandas as pd\ndf = pd.read_csv('sheet_data.csv')\nclean_df = df.dropna()\nresult = clean_df.to_dict(orient='records')\nresult`,
+        timestamp: Date.now()
+    },
+    {
+        id: 'skill-summary-stats',
+        name: 'Skill: Summary Stats',
+        pythonCode: `import pandas as pd\ndf = pd.read_csv('sheet_data.csv')\nsummary = df.describe().reset_index()\nresult = summary.to_dict(orient='records')\nresult`,
+        timestamp: Date.now()
+    }
+];
+
 export const loadAutomations = (): SavedAutomation[] => {
     const data = localStorage.getItem(AUTOMATIONS_KEY);
     if (data) {
         return JSON.parse(data);
     }
-    return [];
+    // Return default CrewAI-style tools/skills if empty
+    return DEFAULT_SKILLS;
 };
 
 export const saveAutomations = (automations: SavedAutomation[]) => {

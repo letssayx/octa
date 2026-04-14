@@ -12,6 +12,30 @@ export const TaskType = {
     LOCAL_CHAT_DRAFTING: 'LOCAL_CHAT_DRAFTING'
 } as const;
 
+export type OctaAgent = {
+    role: string;
+    goal: string;
+    backstory: string;
+};
+
+const AGENTS: Record<string, OctaAgent> = {
+    DATA_SCIENTIST: {
+        role: "Senior Data Scientist",
+        goal: "Write highly efficient, bug-free Python code using pandas to process, analyze, and transform local datasets.",
+        backstory: "You are an elite data scientist who specializes in transforming messy CSV data into actionable insights using pandas. You write pure logic and never rely on external databases or APIs. Your code always returns a list of dictionaries."
+    },
+    HR_SPECIALIST: {
+        role: "HR & Communications Expert",
+        goal: "Draft professional, empathetic, and clear communications based on user intent.",
+        backstory: "You are a seasoned HR professional who excels at resolving conflicts, writing announcements, and drafting formal emails."
+    },
+    GENERAL_ASSISTANT: {
+        role: "Helpful General Assistant",
+        goal: "Assist the user with general queries and drafting.",
+        backstory: "You are a helpful, versatile AI assistant designed to provide direct and concise answers."
+    }
+};
+
 export class TaskOrchestrator {
 
     public static classifyIntent(prompt: string): string {
@@ -49,26 +73,26 @@ export class TaskOrchestrator {
     private static async executeAccountingTask(prompt: string, _folder: string, context: string, isVerification: boolean) {
         console.log("-> Routing Accounting Task (Python/SQL Generation)...");
         try {
-            const systemPrompt = `You are an expert Data Engineer and Python Engine.
-            CRITICAL CONSTRAINT: You are NOT a web application builder. Do NOT write React components, HTML, or full web apps.
-            Your ONLY job is to write perfectly valid, executable Python code to process data based on the user's intent.
+            const agent = AGENTS.DATA_SCIENTIST;
+            const systemPrompt = `Role: ${agent.role}\nGoal: ${agent.goal}\nBackstory: ${agent.backstory}
 
-            IMPORTANT PYODIDE CONSTRAINTS:
-            - The data has been written to the virtual filesystem. Read it using pandas: \`pd.read_csv('filename.csv')\`.
-            - You MUST output the result as a LIST OF DICTIONARIES (JSON records) printed to stdout, or return it directly so the Pyodide runtime can capture it.
+            CRITICAL CONSTRAINTS:
+            - You are NOT a web application builder. Do NOT write React components, HTML, or full web apps.
+            - Your ONLY job is to write perfectly valid, executable Python code to process data.
+            - The data has been written to the local virtual filesystem. Read it using pandas: \`pd.read_csv('filename.csv')\`.
+            - You MUST output the result as a LIST OF DICTIONARIES (JSON records).
             - For example:
               \`\`\`python
               import pandas as pd
-              import json
               df = pd.read_csv('filename.csv')
               # ... your processing ...
               result = df.to_dict(orient='records')
               result # Return value for pyodide
               \`\`\`
-            - DO NOT attempt to use Google Sheets API, network calls, or external services. Operate ONLY on the provided local data files.
+            - DO NOT use Google Sheets API, network calls, or external services. Operate ONLY on the local data.
 
-            Intent: ${prompt}.
-            Context/Schema rules: ${context}`;
+            User Intent: ${prompt}
+            Context/Schema: ${context}`;
 
             let generatedLogic = "";
             const settingsStr = localStorage.getItem('octa_settings');
@@ -168,7 +192,14 @@ export class TaskOrchestrator {
             const groqKey = settings.groqApiKey || import.meta.env.VITE_GROQ_API_KEY;
             const openRouterKey = settings.openRouterApiKey;
             const hfKey = settings.hfApiKey;
-            const systemPrompt = `You are a helpful AI assistant. Context rules: ${context}`;
+
+            // Determine agent persona based on simple heuristic (can be expanded)
+            let agent = AGENTS.GENERAL_ASSISTANT;
+            if (prompt.toLowerCase().includes('hr') || prompt.toLowerCase().includes('email') || prompt.toLowerCase().includes('draft')) {
+                agent = AGENTS.HR_SPECIALIST;
+            }
+
+            const systemPrompt = `Role: ${agent.role}\nGoal: ${agent.goal}\nBackstory: ${agent.backstory}\n\nContext rules: ${context}`;
 
             // General chat favors speed (Groq) or standard models
             if ((settings.llmProvider === 'auto' || settings.llmProvider === 'groq') && groqKey && groqKey !== "your_key_here") {
