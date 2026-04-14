@@ -1,5 +1,7 @@
 import { chatWithWebLLM, initWebLLM } from '../lib/webllm';
-import { initDuckDB, executeLocalSQL } from '../lib/duckdb';
+// import { initDuckDB, executeLocalSQL } from '../lib/duckdb';
+import { executeLocalPython } from '../lib/pyodide';
+import { chatWithGroq } from '../lib/groq';
 
 export const TaskType = {
     ACCOUNTING_DATA_CRUNCHING: 'ACCOUNTING_DATA_CRUNCHING',
@@ -28,14 +30,14 @@ export class TaskOrchestrator {
         return TaskType.LOCAL_CHAT_DRAFTING;
     }
 
-    public static async handleTask(prompt: string, folderName: string, folderContext: string = "") {
+    public static async handleTask(prompt: string, folderName: string, folderContext: string = "", isVerification: boolean = false) {
         console.log(`[ORCHESTRATOR] Routing prompt: "${prompt}" in folder: ${folderName}`);
 
         const taskType = this.classifyIntent(prompt);
 
         switch (taskType) {
             case TaskType.ACCOUNTING_DATA_CRUNCHING:
-                return this.executeAccountingTask(prompt, folderName, folderContext);
+                return this.executeAccountingTask(prompt, folderName, folderContext, isVerification);
             case TaskType.LOCAL_CHAT_DRAFTING:
                 return this.executeLocalChatTask(prompt, folderContext);
             default:
@@ -43,32 +45,63 @@ export class TaskOrchestrator {
         }
     }
 
-    private static async executeAccountingTask(prompt: string, _folder: string, context: string) {
-        console.log("-> Routing to Local WebLLM Engine to generate SQL...");
+    private static async executeAccountingTask(prompt: string, _folder: string, context: string, isVerification: boolean) {
+        console.log("-> Routing Accounting Task (Python/SQL Generation)...");
         try {
-            await initWebLLM((progress) => console.log(`[WebLLM Progress] ${progress.text}`));
+            const systemPrompt = `You are an expert Data Engineer and Python/SQL Engine.
+            CRITICAL CONSTRAINT: You are NOT a web application builder. Do NOT write React components, HTML, or full web apps (like bolt.new).
+            Your ONLY job is to write plain Python code or SQL to process data based on the user's intent.
+            Output perfectly valid Python or SQL code.
+            Intent: ${prompt}.
+            Context rules: ${context}`;
 
-            const systemPrompt = `You are an expert Data Engineer. Output perfectly valid SQL based ONLY on the provided schema. Schema: Table ContextFiles (id INT, filename VARCHAR). Intent: ${prompt}. ${context}`;
+            let generatedLogic = "";
+            const groqKey = localStorage.getItem('groq_api_key') || "";
 
-            const response = await chatWithWebLLM(systemPrompt, "");
+            if (groqKey) {
+                 console.log("-> Using Groq API (Power User Mode)");
+                 generatedLogic = (await chatWithGroq(groqKey, prompt, systemPrompt)) || "";
+            } else {
+                 console.log("-> Routing to Local WebLLM Engine (Default Mode)");
+                 await initWebLLM((progress) => console.log(`[WebLLM Progress] ${progress.text}`));
+                 generatedLogic = (await chatWithWebLLM(systemPrompt, "")) || "";
+            }
 
-            // Real Stitching: Execute the generated SQL locally in DuckDB!
-            await initDuckDB();
+            console.log("-> Executing generated logic locally...");
 
-            // For now, we prove the stitch by running a safe test query locally.
-            // In a real app, you would parse the SQL from `response` and execute it.
-            const sampleSQL = "SELECT 42 as answer, 'Real DuckDB Executed!' as status";
-            const localResult = await executeLocalSQL(sampleSQL);
+            // Extract Python code block from the LLM response
+            let pythonCode = "";
+            const match = generatedLogic.match(/```python\n([\s\S]*?)```/);
+            if (match && match[1]) {
+                pythonCode = match[1];
+            } else {
+                // Fallback, attempt to run the whole thing if no codeblocks found
+                pythonCode = generatedLogic;
+            }
+
+            let dataResult: any = null;
+            let executionMessage = "";
+            try {
+                const pyResult = await executeLocalPython(pythonCode);
+                // Convert pyodide proxy or result to JSON string to display
+                dataResult = [{ "Status": "Success", "Computation": "Ran via Pyodide", "Result": String(pyResult) }];
+                executionMessage = `Computed locally via Pyodide. ${isVerification ? "Verification Applied." : ""}`;
+            } catch (pyError: any) {
+                 console.error("Pyodide execution failed:", pyError);
+                 dataResult = [{ "Status": "Error", "Message": pyError.message }];
+                 executionMessage = `[Execution Error]\n${pyError.message}`;
+            }
 
             return {
                 status: "success",
-                action: "duckdb_sql",
-                message: `[Locally Generated SQL Draft]\n${response}\n\nData rendered securely in FortuneSheet.`,
-                data: localResult
+                action: "python_compute",
+                message: `[Generated Logic]\n${generatedLogic}\n\n${executionMessage}`,
+                data: dataResult,
+                generatedLogic: generatedLogic || ""
             };
         } catch (e: any) {
-            console.error("WebLLM/DuckDB failed:", e);
-            return { status: "error", action: "none", message: `Local Execution Error: ${e.message}` };
+            console.error("Execution failed:", e);
+            return { status: "error", action: "none", message: `Execution Error: ${e.message}` };
         }
     }
 

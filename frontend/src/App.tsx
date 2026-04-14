@@ -15,9 +15,13 @@ function App() {
   const [sheetData, setSheetData] = useState<any[]>([{ name: "Sheet1", celldata: [] }])
   const [showFortuneSheet, setShowFortuneSheet] = useState(false)
 
+  // Verification Loop State
+  const [pendingLogicToLock, setPendingLogicToLock] = useState<string | null>(null)
+
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false)
   const [webLlmProgress, setWebLlmProgress] = useState('')
+  const [groqKey, setGroqKey] = useState(localStorage.getItem('groq_api_key') || '')
 
   const chatHistoryRef = useRef<HTMLDivElement>(null)
 
@@ -63,9 +67,14 @@ function App() {
         systemResponse = result;
     } else {
         systemResponse = result.message || "Done.";
-        if (result.action === 'duckdb_sql') {
+        if (result.action === 'duckdb_sql' || result.action === 'python_compute') {
             setWorkspaceState(`Data Grid / FortuneSheet View [Context: ${activeFolder.name}]`);
             const dataResult = (result as any).data;
+
+            if (result.action === 'python_compute') {
+                setPendingLogicToLock((result as any).generatedLogic);
+            }
+
             if (dataResult && Array.isArray(dataResult)) {
                 // Convert array of objects to FortuneSheet celldata format
                 const headers = Object.keys(dataResult[0] || {});
@@ -114,8 +123,28 @@ function App() {
   }
 
   const handleSaveSettings = () => {
-      // API Key saving removed as we are 100% Local Ollama now
+      if (groqKey) {
+          localStorage.setItem('groq_api_key', groqKey);
+      } else {
+          localStorage.removeItem('groq_api_key');
+      }
       setShowSettings(false);
+  }
+
+  const lockVerificationLogic = () => {
+      if (!pendingLogicToLock) return;
+      const rule = window.prompt("Name this rule to lock it for this folder (e.g. 'Always exclude tax'):");
+      if (rule) {
+          // Write to implicit folder memory
+          setFolders(prev => prev.map(f => {
+              if (f.id === activeFolderId) {
+                  return { ...f, chatHistory: [...f.chatHistory, {role: 'system', content: `[LOGIC LOCKED]: ${rule}`}] }
+              }
+              return f;
+          }));
+          alert(`Rule locked into .octa_context for folder ${activeFolder.name}`);
+          setPendingLogicToLock(null);
+      }
   }
 
   // Pre-load WebLLM to cache the model if desired
@@ -142,8 +171,18 @@ function App() {
                     All logic and data processing happens entirely in your browser using WebLLM and DuckDB-WASM.
                   </p>
 
-                  <label style={{marginTop: '1rem'}}>Local AI Engine (For offline drafting)</label>
-                  <button className="btn-secondary" style={{width: '100%', marginBottom: '1.5rem'}} onClick={handlePreloadAI}>
+                  <label style={{marginTop: '1rem'}}>Groq API Key (Optional Power User Mode)</label>
+                  <input
+                      type="password"
+                      className="chat-input"
+                      style={{width: '100%', marginBottom: '1rem', marginTop: '0.5rem'}}
+                      placeholder="gsk_..."
+                      value={groqKey}
+                      onChange={e => setGroqKey(e.target.value)}
+                  />
+
+                  <label style={{marginTop: '1rem'}}>Local AI Engine (Default Offline Mode)</label>
+                  <button className="btn-secondary" style={{width: '100%', marginBottom: '1.5rem', marginTop: '0.5rem'}} onClick={handlePreloadAI}>
                       {webLlmProgress || 'Preload WebLLM Engine'}
                   </button>
 
@@ -222,8 +261,17 @@ function App() {
 
       {/* RIGHT WORKSPACE */}
       <div className="workspace-container">
-        <div className="workspace-header">
+        <div className="workspace-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
           <h3 className="workspace-title">Workspace</h3>
+          {pendingLogicToLock && (
+              <button
+                className="btn-primary"
+                style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem'}}
+                onClick={lockVerificationLogic}
+              >
+                 🔒 Lock Verification Logic
+              </button>
+          )}
         </div>
         <div className="workspace-content" style={{padding: showFortuneSheet ? 0 : '1rem'}}>
           {showFortuneSheet ? (

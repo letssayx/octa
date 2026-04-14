@@ -6,8 +6,8 @@ This specification details the components comprising the Privacy-First "Octa Des
 
 | Component | Object / Technology | Privacy Role & Functionality |
 | :--- | :--- | :--- |
-| **Logic & Drafting Engine** | WebLLM (In-Browser SLM) | Generates SQL, drafts emails, and handles chat entirely locally via WebGPU. Model weights are cached in the browser's IndexedDB. No server-side API calls are required. |
-| **Computation Engine** | DuckDB-WASM | Performs data collating (Excel/CSV), accounting, sales analysis, and local data querying natively within the client's browser memory. |
+| **Logic & Drafting Engine** | WebLLM (Default) / Groq API (Opt-in) | Generates Python/SQL logic. Defaults to a local Gemma SLM via WebGPU. Power users can input a Groq key for faster inference. Strictly constrained to data processing, rejecting full app development requests. |
+| **Computation Engine** | Pyodide / DuckDB-WASM | Pyodide executes AI-generated Python code directly in the browser. DuckDB handles structured CSVs. All data remains in client RAM. |
 | **Data Grid & UI** | FortuneSheet / Specialized UI | Provides an exact embedded Excel/Spreadsheet clone experience for accounting/inventory natively in the browser via `<Workbook />`. Plus specific views for ad-hoc outputs. |
 | **Public Data Connector** | Browser `fetch` (Fetch API) | Fetches real-time internet data (e.g., public stock APIs) on demand when requested by the AI, directly from the client. |
 | **Automation Hub (Local)** | URL Schemes & Native Browser APIs | Utilizes `wa.me` for WhatsApp and `mailto:` for emails. Uses `setInterval` and `Notification.requestPermission()` for offline Reminders. Avoids centralized automation servers like Twilio. |
@@ -15,12 +15,11 @@ This specification details the components comprising the Privacy-First "Octa Des
 
 ## Execution Framework
 
-### 100% Local Inference Paradigm
-1.  **Task Routing & Intent:** The user provides a prompt (e.g., "Collate these HR excels," "Analyze my stock"). The local orchestrator classifies the intent.
-2.  **Data Ingestion:** Files (CSVs) are uploaded and loaded locally into **DuckDB-WASM**. No files are uploaded to any server.
-3.  **Real-Time Data Fetching:** If the task requires current internet data (e.g., "Analyze stock X"), the frontend executes a `fetch` request to grab the latest public information to provide context to the AI.
-4.  **Local Execution & SQL Generation:** The WebLLM instance (running via WebGPU) formulates queries based on the file's schema or the real-time data fetched, and passes it to DuckDB-WASM.
-5.  **Results & Persistence:** The final outputs (a combined Excel file, an Accounting grid) are displayed in the UI and can be saved locally to the OPFS. Local hooks (`mailto:`, `wa.me`) are triggered if communication is requested.
+### The 4-Step Verification Loop
+1.  **Data / Query Ingestion:** User provides data files and a prompt (e.g., "Calculate margins").
+2.  **Computation via Python:** The orchestrator routes the prompt to Groq (if key exists) or local WebLLM. The AI writes Python code which is then executed locally by `Pyodide` to manipulate the data.
+3.  **Verification:** The user reviews the output. If incorrect, they provide feedback (e.g., "Exclude row 5"). The AI adjusts the code and re-computes in Pyodide. This loop continues until satisfaction.
+4.  **Output & Locking:** Once correct, the user locks the logic. The specific data transformations/rules are saved as verification logic in the folder's `.octa_context` file, ensuring future runs apply the exact same rules without requiring re-prompting.
 
 ### Implicit Grounded Memory & Context Bounding
 To provide a magical, zero-configuration "Desktop" experience:

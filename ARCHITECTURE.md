@@ -51,16 +51,18 @@ graph TD
 ### 100% Client Side (Sovereign Zone)
 Everything in this architecture runs **exclusively** in the client's memory or browser storage. There is no backend, no database to install, and no large binaries (like Ollama) required. The app functions as a pure frontend application.
 
-**Task Orchestration & AI (WebLLM):**
-The AI models run directly in the browser using WebGPU via WebLLM. This means the model weights are downloaded once and cached in the browser's IndexedDB.
-- *Logic & Drafting:* The in-browser model generates SQL to process files or drafts responses to the user without sending any prompts to a cloud API.
-- *Realtime Info:* If the user asks "Analyze X stock," the application uses standard browser `fetch` requests (potentially routed through a CORS proxy if needed) to grab real-time data from public internet APIs directly, feeding it into the AI's context window.
+**Task Orchestration & AI (WebLLM & Groq Fallback):**
+The system routes logic generation based on user preference:
+- *Local Default (Gemma via WebLLM):* Standard users run AI models directly in the browser using WebGPU. Model weights are cached in IndexedDB.
+- *Power User (Groq API):* Users can supply a Groq API key to offload heavy logic generation to Groq for maximum speed.
+- *Strict Scope:* System prompts enforce that the AI acts **only as a data processing engine**, not a full web app builder (like bolt.new). It generates Python/SQL scripts for business logic, not React components.
 
-**Data Crunching (DuckDB-WASM):**
-Raw data (like sales figures or CRM files) uploaded by the user is loaded directly into `DuckDB-WASM`.
-- The AI generates a SQL query based on the user's intent.
-- DuckDB executes this query locally in the browser against the user's file.
-- The results are displayed natively using an embedded spreadsheet clone (FortuneSheet).
+**Computation & Verification Loop (Pyodide & DuckDB):**
+Raw data (like sales figures or CRM files) uploaded by the user is loaded directly into local memory.
+1. *Ingestion:* User provides a task.
+2. *Computation:* The AI generates Python code (executed via `Pyodide` in the browser) or SQL (executed via `DuckDB-WASM`).
+3. *Verification & Output:* The results are displayed (e.g., in FortuneSheet). If the user notes an error (e.g., "Exclude tax"), the AI regenerates the logic.
+4. *Locking Logic:* Once correct, the user can "lock" the verification logic, permanently saving the rule into the folder's implicit memory (`.octa_context`) for future files.
 
 **Local Persistence & Context-Bounding (The OpenClaw Approach):**
 To prevent AI from being overwhelmed by infinite chat history and to provide a true "Desktop" feel, data is organized into **Folders** within the **Origin Private File System (OPFS)**.
