@@ -22,11 +22,26 @@
   position: relative;
   transition: background-color 0.2s;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .resize-handle:hover,
-.resize-handle[data-resize-handle-active] {
+.resize-handle[data-resize-handle-active],
+.resize-handle[data-panel-resize-handle-enabled="true"]:hover {
   background-color: var(--accent-color);
+}
+
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  cursor: col-resize;
+  z-index: 11;
 }
 
 .delete-btn {

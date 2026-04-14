@@ -8,7 +8,7 @@ export const chatWithGroq = async (apiKey: string, prompt: string, systemPrompt:
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
         ],
-        model: "llama-3.1-70b-versatile", // Cost effective, high logic capabilities
+        model: "llama3-70b-8192", // Updated model per Groq deprecation
         max_tokens: 1500, // Token optimization
         temperature: 0.1, // High logic determination
     });
