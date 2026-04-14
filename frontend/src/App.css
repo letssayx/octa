@@ -178,7 +178,7 @@
   outline: none;
 }
 
-.send-btn {
+.send-btn, .attach-btn {
   background-color: var(--text-heading);
   color: var(--bg-app);
   border: none;
@@ -192,8 +192,16 @@
   transition: opacity 0.2s;
 }
 
-.send-btn:hover {
+.attach-btn {
+  background-color: transparent;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  margin-right: 8px;
+}
+
+.send-btn:hover, .attach-btn:hover {
   opacity: 0.8;
+  color: var(--text-heading);
 }
 
 /* RIGHT WORKSPACE */

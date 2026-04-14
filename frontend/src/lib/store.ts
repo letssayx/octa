@@ -2,6 +2,7 @@
 export type Message = {
     role: 'user' | 'system';
     content: string;
+    timestamp: number;
 };
 
 export type FileNode = { name: string; type: 'file' | 'context' };
@@ -26,7 +27,7 @@ export const loadFolders = (): FolderNode[] => {
             id: 'default-1',
             name: 'General Workspace',
             files: [],
-            chatHistory: [{role: 'system', content: 'Welcome to your local General Workspace.'}]
+            chatHistory: [{role: 'system', content: 'Welcome to your local General Workspace.', timestamp: Date.now()}]
         }
     ];
 };

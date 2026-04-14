@@ -1,11 +1,36 @@
 import { useState, useRef, useEffect } from 'react'
 import { Workbook } from "@fortune-sheet/react"
 import "@fortune-sheet/react/dist/index.css"
+import Papa from 'papaparse'
 import { TaskOrchestrator } from './orchestrator/Orchestrator'
 import { loadFolders, saveFolders } from './lib/store'
-import type { FolderNode, Message } from './lib/store'
+import type { FolderNode } from './lib/store'
 import { initWebLLM } from './lib/webllm'
+import { writeDataToPyodide } from './lib/pyodide'
 import './App.css'
+
+// Helper component for message clipping
+const ChatBubble = ({ message }: { message: string }) => {
+    const [expanded, setExpanded] = useState(false);
+    const MAX_LENGTH = 300;
+    const isLong = message.length > MAX_LENGTH;
+
+    if (!isLong) {
+        return <div className="message-bubble">{message}</div>;
+    }
+
+    return (
+        <div className="message-bubble">
+            {expanded ? message : `${message.substring(0, MAX_LENGTH)}...`}
+            <div
+                style={{fontSize: '0.8rem', color: '#66b2ff', cursor: 'pointer', marginTop: '4px', textAlign: 'right'}}
+                onClick={() => setExpanded(!expanded)}
+            >
+                {expanded ? 'Show Less ⬆' : 'Read More ⬇'}
+            </div>
+        </div>
+    );
+};
 
 function App() {
   const [folders, setFolders] = useState<FolderNode[]>(loadFolders())
@@ -21,8 +46,8 @@ function App() {
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false)
   const [webLlmProgress, setWebLlmProgress] = useState('')
-  const [groqKey, setGroqKey] = useState(localStorage.getItem('groq_api_key') || '')
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const chatHistoryRef = useRef<HTMLDivElement>(null)
 
   const activeFolder = folders.find(f => f.id === activeFolderId) || folders[0]
@@ -45,16 +70,16 @@ function App() {
     setChatInput('');
 
     // 1. Update the local context's chat history
-    const updateHistory = (newMsg: Message) => {
+    const updateHistory = (role: 'user' | 'system', content: string) => {
         setFolders(prev => prev.map(f => {
             if (f.id === activeFolderId) {
-                return { ...f, chatHistory: [...f.chatHistory, newMsg] }
+                return { ...f, chatHistory: [...f.chatHistory, {role, content, timestamp: Date.now()}] }
             }
             return f;
         }))
     }
 
-    updateHistory({ role: 'user', content: userPrompt });
+    updateHistory('user', userPrompt);
 
     // Execute Task Routing (WebLLM locally or Groq externally)
     const contextStr = `This chat is strictly bounded to the folder: ${activeFolder.name}. Provide concise answers.`;
@@ -99,7 +124,7 @@ function App() {
         }
     }
 
-    updateHistory({ role: 'system', content: systemResponse });
+    updateHistory('system', systemResponse);
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -116,19 +141,57 @@ function App() {
           id: `f-${Date.now()}`,
           name,
           files: [],
-          chatHistory: [{role: 'system', content: `Context bounded to new folder: ${name}`}]
+          chatHistory: [{role: 'system', content: `Context bounded to new folder: ${name}`, timestamp: Date.now()}]
       };
       setFolders(prev => [...prev, newFolder]);
       setActiveFolderId(newFolder.id);
   }
 
   const handleSaveSettings = () => {
-      if (groqKey) {
-          localStorage.setItem('groq_api_key', groqKey);
-      } else {
-          localStorage.removeItem('groq_api_key');
-      }
       setShowSettings(false);
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const csvData = event.target?.result as string;
+          // Parse only to get headers to prevent token explosion
+          // Write full data to local Pyodide memory for Python processing later
+          writeDataToPyodide(file.name, csvData);
+
+          // Parse only to get headers to prevent token explosion for the AI
+          Papa.parse(csvData, {
+              header: true,
+              preview: 1, // Only read the first row for headers
+              complete: (results) => {
+                  const headers = results.meta.fields || [];
+                  const schemaString = `File '${file.name}' attached. Schema Columns: [${headers.join(', ')}]`;
+
+                  // Update folder files and append schema to context
+                  setFolders(prev => prev.map(f => {
+                      if (f.id === activeFolderId) {
+                          return {
+                              ...f,
+                              files: [...f.files, { name: file.name, type: 'file' }],
+                              chatHistory: [...f.chatHistory, {role: 'system', content: schemaString, timestamp: Date.now()}]
+                          }
+                      }
+                      return f;
+                  }));
+
+                  setWorkspaceState(`File Attached: ${file.name}`);
+              }
+          });
+      };
+      reader.readAsText(file);
+
+      // Reset input
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+      }
   }
 
   const lockVerificationLogic = () => {
@@ -138,7 +201,7 @@ function App() {
           // Write to implicit folder memory
           setFolders(prev => prev.map(f => {
               if (f.id === activeFolderId) {
-                  return { ...f, chatHistory: [...f.chatHistory, {role: 'system', content: `[LOGIC LOCKED]: ${rule}`}] }
+                  return { ...f, chatHistory: [...f.chatHistory, {role: 'system', content: `[LOGIC LOCKED]: ${rule}`, timestamp: Date.now()}] }
               }
               return f;
           }));
@@ -170,16 +233,6 @@ function App() {
                     Octa Desktop is running in 100% Local, Air-Gapped Mode.
                     All logic and data processing happens entirely in your browser using WebLLM and DuckDB-WASM.
                   </p>
-
-                  <label style={{marginTop: '1rem'}}>Groq API Key (Optional Power User Mode)</label>
-                  <input
-                      type="password"
-                      className="chat-input"
-                      style={{width: '100%', marginBottom: '1rem', marginTop: '0.5rem'}}
-                      placeholder="gsk_..."
-                      value={groqKey}
-                      onChange={e => setGroqKey(e.target.value)}
-                  />
 
                   <label style={{marginTop: '1rem'}}>Local AI Engine (Default Offline Mode)</label>
                   <button className="btn-secondary" style={{width: '100%', marginBottom: '1.5rem', marginTop: '0.5rem'}} onClick={handlePreloadAI}>
@@ -235,15 +288,30 @@ function App() {
         <div className="chat-history" ref={chatHistoryRef}>
           {activeFolder.chatHistory.map((m, i) => (
             <div key={i} className={`chat-message ${m.role}`}>
-              <div className="message-bubble">
-                {m.content}
+              <div style={{fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px', textAlign: m.role === 'user' ? 'right' : 'left'}}>
+                  {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
+              <ChatBubble message={m.content} />
             </div>
           ))}
         </div>
 
         <div className="chat-input-area">
           <div className="input-wrapper">
+            <button
+                className="attach-btn"
+                title="Attach Data File"
+                onClick={() => fileInputRef.current?.click()}
+            >
+                📎
+            </button>
+            <input
+              type="file"
+              accept=".csv"
+              style={{display: 'none'}}
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+            />
             <input
               className="chat-input"
               value={chatInput}
@@ -263,15 +331,24 @@ function App() {
       <div className="workspace-container">
         <div className="workspace-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
           <h3 className="workspace-title">Workspace</h3>
-          {pendingLogicToLock && (
-              <button
-                className="btn-primary"
-                style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem'}}
-                onClick={lockVerificationLogic}
-              >
-                 🔒 Lock Verification Logic
-              </button>
-          )}
+          <div>
+            <button
+              className="btn-secondary"
+              style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem', marginRight: '8px'}}
+              onClick={() => { setShowFortuneSheet(true); setWorkspaceState('Blank Sheet'); }}
+            >
+               📝 Open Blank Sheet
+            </button>
+            {pendingLogicToLock && (
+                <button
+                  className="btn-primary"
+                  style={{fontSize: '0.8rem', padding: '0.2rem 0.6rem'}}
+                  onClick={lockVerificationLogic}
+                >
+                   🔒 Lock Verification Logic
+                </button>
+            )}
+          </div>
         </div>
         <div className="workspace-content" style={{padding: showFortuneSheet ? 0 : '1rem'}}>
           {showFortuneSheet ? (

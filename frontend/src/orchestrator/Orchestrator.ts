@@ -56,9 +56,10 @@ export class TaskOrchestrator {
             Context rules: ${context}`;
 
             let generatedLogic = "";
-            const groqKey = localStorage.getItem('groq_api_key') || "";
+            // Use environment variable for SaaS API key rather than exposing it to localstorage
+            const groqKey = import.meta.env.VITE_GROQ_API_KEY;
 
-            if (groqKey) {
+            if (groqKey && groqKey !== "your_key_here") {
                  console.log("-> Using Groq API (Power User Mode)");
                  generatedLogic = (await chatWithGroq(groqKey, prompt, systemPrompt)) || "";
             } else {
