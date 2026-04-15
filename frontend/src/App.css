@@ -7,7 +7,6 @@
 
 /* LEFT SIDEBAR - FILE EXPLORER */
 .sidebar {
-  width: 260px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -192,7 +191,6 @@
 /* CENTER CHAT */
 .chat-container {
   flex: 1;
-  max-width: 800px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-color);

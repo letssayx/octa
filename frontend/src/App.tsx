@@ -7,7 +7,7 @@ import { loadFolders, saveFolders, loadAutomations, saveAutomations, loadSetting
 import type { FolderNode, SavedAutomation } from './lib/store'
 import { writeDataToPyodide, executeLocalPython } from './lib/pyodide'
 import { SettingsModal } from './components/SettingsModal'
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { X, FileText, Folder } from 'lucide-react';
 import './App.css'
 
@@ -362,7 +362,7 @@ function App() {
     <div className="octa-desktop">
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
-      <PanelGroup orientation="horizontal" style={{height: '100vh'}}>
+      <PanelGroup direction="horizontal" id="octa-desktop-layout" style={{height: '100vh', width: '100vw', display: 'flex'}}>
           {/* LEFT SIDEBAR - FILE EXPLORER */}
           <Panel defaultSize={20} minSize={15} maxSize={30} className="sidebar" style={{borderRight: '1px solid var(--border-color)', height: '100vh', display: 'flex', flexDirection: 'column'}}>
             <div className="sidebar-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>

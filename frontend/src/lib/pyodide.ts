@@ -8,13 +8,13 @@ export const initPyodide = async () => {
         pyodideInstance = await loadPyodide({
             indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/"
         });
-        await pyodideInstance.loadPackage("pandas"); // Load common data science packages if needed
+        await pyodideInstance.loadPackage(["pandas", "openpyxl"]); // Load common data science packages if needed
         console.log("Pyodide initialized locally.");
     }
     return pyodideInstance;
 };
 
-export const writeDataToPyodide = async (filename: string, content: string) => {
+export const writeDataToPyodide = async (filename: string, content: string | Uint8Array) => {
     if (!pyodideInstance) {
         await initPyodide();
     }

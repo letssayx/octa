@@ -111,8 +111,8 @@ export class TaskOrchestrator {
             // Auto-Router uses open-source coding experts via OpenRouter (DeepSeek)
             if ((settings.llmProvider === 'auto' || settings.llmProvider === 'openrouter') && openRouterKey) {
                 console.log("-> Routing to OpenRouter (DeepSeek Coder / Qwen)");
-                // Defaulting to deepseek-coder as it's an excellent open-source model for logical tasks
-                generatedLogic = (await chatWithOpenRouter(openRouterKey, prompt, systemPrompt, "deepseek/deepseek-coder")) || "";
+                // Defaulting to deepseek-chat as deepseek-coder is deprecated/invalid in openrouter
+                generatedLogic = (await chatWithOpenRouter(openRouterKey, prompt, systemPrompt, "deepseek/deepseek-chat")) || "";
             } else if ((settings.llmProvider === 'auto' || settings.llmProvider === 'groq') && groqKey && groqKey !== "your_key_here") {
                  console.log("-> Routing to Groq API (Fast Llama3)");
                  generatedLogic = (await chatWithGroq(groqKey, prompt, systemPrompt)) || "";
