@@ -87,7 +87,7 @@ function App() {
       }
 
       document.documentElement.setAttribute('data-os', s.osStyle);
-  }, [showSettings]);
+  }, [showSettings, _settings.theme, _settings.osStyle]);
 
   useEffect(() => {
     if (chatHistoryRef.current) {

@@ -41,7 +41,7 @@ export class TaskOrchestrator {
     public static classifyIntent(prompt: string): string {
         const p = prompt.toLowerCase();
 
-        if (p.includes('calculate') || p.includes('sales') || p.includes('inventory') || p.includes('margin') || p.includes('stock') || p.includes('collate')) {
+        if (p.includes('calculate') || p.includes('sales') || p.includes('inventory') || p.includes('margin') || p.includes('stock') || p.includes('collate') || p.includes('sku') || p.includes('qty') || p.includes('product')) {
             return TaskType.ACCOUNTING_DATA_CRUNCHING;
         }
         if (p.includes('pdf') || p.includes('report')) {
@@ -79,7 +79,7 @@ export class TaskOrchestrator {
             CRITICAL CONSTRAINTS:
             - You are NOT a web application builder. Do NOT write React components, HTML, or full web apps.
             - Your ONLY job is to write perfectly valid, executable Python code to process data.
-            - The data has been written to the local virtual filesystem. Read it using pandas: \`pd.read_csv('filename.csv')\`.
+            - The data has been written to the local virtual filesystem. Read it using pandas: \`pd.read_csv('filename.csv')\`. Use the exact filenames mentioned in the Context/Schema below.
             - You MUST output the result as a LIST OF DICTIONARIES (JSON records).
             - For example:
               \`\`\`python
@@ -199,7 +199,7 @@ export class TaskOrchestrator {
                 agent = AGENTS.HR_SPECIALIST;
             }
 
-            const systemPrompt = `Role: ${agent.role}\nGoal: ${agent.goal}\nBackstory: ${agent.backstory}\n\nContext rules: ${context}`;
+            const systemPrompt = `Role: ${agent.role}\nGoal: ${agent.goal}\nBackstory: ${agent.backstory}\n\nContext rules: ${context}\n\nIf the user asks about the data schema or contents of the file, you MUST use the Context rules provided to answer them accurately. Do NOT invent data or give generic answers.`;
 
             // General chat favors speed (Groq) or standard models
             if ((settings.llmProvider === 'auto' || settings.llmProvider === 'groq') && groqKey && groqKey !== "your_key_here") {
